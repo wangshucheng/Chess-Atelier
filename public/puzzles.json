@@ -1,0 +1,16 @@
+[
+  { "id": "p1_1", "level": 1, "fen": "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1", "solution": ["Ra8#"], "theme": ["back-rank", "rook"], "rating": 800 },
+  { "id": "p1_2", "level": 1, "fen": "6k1/5ppp/8/8/8/8/5PPP/3Q2K1 w - - 0 1", "solution": ["Qd8#"], "theme": ["back-rank", "queen"], "rating": 850 },
+  { "id": "p1_3", "level": 1, "fen": "7k/5Q2/6K1/8/8/8/8/8 w - - 0 1", "solution": ["Qf8#"], "theme": ["king-hunt", "queen"], "rating": 900 },
+  { "id": "p1_4", "level": 1, "fen": "6rk/6pp/8/6N1/8/8/6PP/6K1 w - - 0 1", "solution": ["Nf7#"], "theme": ["smothered", "knight"], "rating": 1000 },
+
+  { "id": "p2_1", "level": 2, "fen": "k7/8/2K5/8/8/8/8/7R w - - 0 1", "solution": ["Kb6", "Kb8", "Rh8#"], "theme": ["kr-vs-k", "opposition"], "rating": 1100 },
+  { "id": "p2_2", "level": 2, "fen": "7k/8/5K2/7R/8/8/8/8 w - - 0 1", "solution": ["Kg6", "Kg8", "Rh8#"], "theme": ["kr-vs-k", "opposition"], "rating": 1150 },
+  { "id": "p2_3", "level": 2, "fen": "6k1/5p1p/8/8/8/8/5PPP/R5K1 w - - 0 1", "solution": ["Ra8+", "Kf7", "Ra7+", "Kg6", "Rg7#", "Kh6", "Rg6#"], "theme": ["rook-checks", "endgame"], "rating": 1200 },
+
+  { "id": "p3_1", "level": 3, "fen": "6k1/8/5K2/8/8/8/8/7R w - - 0 1", "solution": ["Kg6", "Kh8", "Ra1", "Kg8", "Ra8#"], "theme": ["kr-vs-k", "waiting-move"], "rating": 1300 },
+  { "id": "p3_2", "level": 3, "fen": "8/8/8/8/8/5k2/8/5K1R w - - 0 1", "solution": ["Kg2", "Ke3", "Kg3", "Kf3", "Rf1+", "Kg4", "Kg4"], "theme": ["kr-vs-k", "approach"], "rating": 1350 },
+
+  { "id": "p4_1", "level": 4, "fen": "7k/8/8/8/5K2/8/8/7R w - - 0 1", "solution": ["Kg5", "Kg7", "Kg6", "Kg8", "Rh8#"], "theme": ["kr-vs-k", "long-approach"], "rating": 1500 },
+  { "id": "p4_2", "level": 4, "fen": "8/8/8/4k3/8/4K3/8/4R3 w - - 0 1", "solution": ["Rd1", "Kf5", "Kd4", "Ke4", "Re1+", "Kd5", "Kd3", "Kc5", "Rc1+", "Kb5", "Kc3"], "theme": ["kr-vs-k", "opposition"], "rating": 1550 }
+]

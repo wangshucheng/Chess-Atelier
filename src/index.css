@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: #0E0F13;
+    color: #F2E9DC;
+    font-family: "Manrope", system-ui, sans-serif;
+    font-feature-settings: "ss01", "cv01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  /* 全局背景：午夜炭 + 极细金色网格 + 噪点 */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(212, 165, 116, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(212, 165, 116, 0.03) 1px, transparent 1px);
+    background-size: 56px 56px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+    opacity: 0.04;
+    pointer-events: none;
+    z-index: 0;
+    mix-blend-mode: overlay;
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
+    min-height: 100%;
+  }
+
+  /* 滚动条 */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(212, 165, 116, 0.2);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(212, 165, 116, 0.4);
+  }
+
+  /* 文本选择 */
+  ::selection {
+    background: rgba(212, 165, 116, 0.3);
+    color: #F2E9DC;
+  }
+}
+
+@layer components {
+  .font-display {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-feature-settings: "lnum", "ss01";
+  }
+  .font-mono {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+  }
+
+  /* 金色描边卡片 */
+  .card-gold {
+    background: linear-gradient(180deg, rgba(35, 38, 47, 0.6), rgba(26, 28, 36, 0.8));
+    border: 1px solid rgba(212, 165, 116, 0.15);
+    backdrop-filter: blur(8px);
+    transition: border-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  .card-gold:hover {
+    border-color: rgba(212, 165, 116, 0.5);
+    box-shadow: 0 0 24px -4px rgba(212, 165, 116, 0.25);
+  }
+
+  /* 金边按钮 */
+  .btn-gold-outline {
+    border: 1px solid rgba(212, 165, 116, 0.4);
+    color: #D4A574;
+    background: transparent;
+    transition: all 0.25s ease;
+  }
+  .btn-gold-outline:hover {
+    background: rgba(212, 165, 116, 0.12);
+    border-color: #D4A574;
+    box-shadow: 0 0 16px -4px rgba(212, 165, 116, 0.5);
+  }
+
+  /* 实心金按钮 */
+  .btn-gold-solid {
+    background: linear-gradient(180deg, #D4A574, #B8915F);
+    color: #0E0F13;
+    border: 1px solid #B8915F;
+    transition: all 0.25s ease;
+    font-weight: 600;
+  }
+  .btn-gold-solid:hover {
+    box-shadow: 0 0 24px -2px rgba(212, 165, 116, 0.6);
+    transform: translateY(-1px);
+  }
+  .btn-gold-solid:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* 棋盘格纹理（装饰用） */
+  .checker-deco {
+    background-image:
+      linear-gradient(45deg, rgba(212, 165, 116, 0.05) 25%, transparent 25%),
+      linear-gradient(-45deg, rgba(212, 165, 116, 0.05) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, rgba(212, 165, 116, 0.05) 75%),
+      linear-gradient(-45deg, transparent 75%, rgba(212, 165, 116, 0.05) 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+  }
+
+  /* 标题字距收紧 */
+  .tracking-tight-display {
+    letter-spacing: -0.02em;
+  }
+
+  /* 金色光晕分隔线 */
+  .divider-gold {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(212, 165, 116, 0.4), transparent);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .glow-gold {
+    text-shadow: 0 0 20px rgba(212, 165, 116, 0.4);
+  }
+}

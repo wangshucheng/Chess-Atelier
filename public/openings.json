@@ -1,0 +1,132 @@
+[
+  {
+    "eco": "C60",
+    "name": "Ruy Lopez",
+    "nameZh": "西班牙开局",
+    "category": "open",
+    "mainLine": ["e4", "e5", "Nf3", "Nc6", "Bb5"],
+    "variations": [
+      { "name": "Morphy Defense", "moves": ["a6"], "note": "黑方逼迫白象表态，主流变化" },
+      { "name": "Exchange Variation", "moves": ["Bxc6", "dxc6"], "note": "白方交换简化局面，争夺兵形优势" },
+      { "name": "Berlin Defense", "moves": ["Nf6"], "note": "柏林防御，坚固著称，常引向残局" }
+    ],
+    "description": "最古老且最受欢迎的开局之一，白方通过 Bb5 控制中心并施加压力，战略丰富。"
+  },
+  {
+    "eco": "C50",
+    "name": "Italian Game",
+    "nameZh": "意大利开局",
+    "category": "open",
+    "mainLine": ["e4", "e5", "Nf3", "Nc6", "Bc4"],
+    "variations": [
+      { "name": "Giuoco Piano", "moves": ["Bc5"], "note": "平静的意大利，双方对称发展" },
+      { "name": "Two Knights Defense", "moves": ["Nf6"], "note": "双马防御，战术激烈" },
+      { "name": "Hungarian Defense", "moves": ["Be7"], "note": "匈牙利防御，稳健保守" }
+    ],
+    "description": "古典开放性开局，白象瞄准 f7 弱点，节奏明快，适合初学者掌握开局原则。"
+  },
+  {
+    "eco": "B20",
+    "name": "Sicilian Defense",
+    "nameZh": "西西里防御",
+    "category": "semi-open",
+    "mainLine": ["e4", "c5"],
+    "variations": [
+      { "name": "Open Sicilian", "moves": ["Nf3", "d6", "d4", "cxd4", "Nxd4"], "note": "开放式西西里，白方夺取中心" },
+      { "name": "Closed Sicilian", "moves": ["Nc3", "Nc6", "g3"], "note": "封闭式西西里，白方侧翼进攻" },
+      { "name": "Najdorf Variation", "moves": ["Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6"], "note": "纳伊多夫变体，最复杂的西西里体系" }
+    ],
+    "description": "黑方以 c5 反击中心，不对称兵形制造胜利机会，是大师赛最热门的应 e4 开局。"
+  },
+  {
+    "eco": "C00",
+    "name": "French Defense",
+    "nameZh": "法兰西防御",
+    "category": "semi-open",
+    "mainLine": ["e4", "e6"],
+    "variations": [
+      { "name": "Advance Variation", "moves": ["d4", "d5", "e5"], "note": "推进变体，白方建立空间优势" },
+      { "name": "Exchange Variation", "moves": ["d4", "d5", "exd5", "exd5"], "note": "交换变体，简化局面" },
+      { "name": "Tarrasch Variation", "moves": ["d4", "d5", "Nd2"], "note": "塔拉什变体，稳健发展" }
+    ],
+    "description": "黑方以 e6 准备 d5 反击，结构稳固但象易被锁，需关注 c8 象的出路。"
+  },
+  {
+    "eco": "B10",
+    "name": "Caro-Kann Defense",
+    "nameZh": "卡罗-卡恩防御",
+    "category": "semi-open",
+    "mainLine": ["e4", "c6"],
+    "variations": [
+      { "name": "Classical Variation", "moves": ["d4", "d5", "Nc3", "dxe4", "Nxe4", "Bf5"], "note": "古典变体，黑方出动象至 g3 之外" },
+      { "name": "Advance Variation", "moves": ["d4", "d5", "e5"], "note": "推进变体，空间优势" },
+      { "name": "Panov Attack", "moves": ["d4", "d5", "exd5", "cxd5"], "note": "帕诺夫进攻，白方转后翼弃兵" }
+    ],
+    "description": "稳固的半开放性开局，黑方先 c6 再 d5 稳固中心，c8 象出路优于法兰西。"
+  },
+  {
+    "eco": "D06",
+    "name": "Queen's Gambit",
+    "nameZh": "后翼弃兵",
+    "category": "closed",
+    "mainLine": ["d4", "d5", "c4"],
+    "variations": [
+      { "name": "Queen's Gambit Accepted", "moves": ["dxc4"], "note": "接受弃兵，黑方交出中心" },
+      { "name": "Queen's Gambit Declined", "moves": ["e6"], "note": "拒绝弃兵，稳固防守" },
+      { "name": "Slav Defense", "moves": ["c6"], "note": "斯拉夫防御，支持 d5 中心" }
+    ],
+    "description": "白方以 c4 邀请弃兵换取中心控制，是封闭性开局的核心，战略深度极高。"
+  },
+  {
+    "eco": "E60",
+    "name": "King's Indian Defense",
+    "nameZh": "古印度防御",
+    "category": "closed",
+    "mainLine": ["d4", "Nf6", "c4", "g6"],
+    "variations": [
+      { "name": "Classical Variation", "moves": ["Nc3", "Bg7", "e4", "d6", "Nf3", "O-O"], "note": "古典变体，黑方王翼进攻" },
+      { "name": "Fianchetto Variation", "moves": ["g3", "Bg7", "Bg2"], "note": "侧翼出象变体，白方稳健" },
+      { "name": "Four Pawns Attack", "moves": ["Nc3", "Bg7", "e4", "d6", "f4"], "note": "四兵进攻，白方激进" }
+    ],
+    "description": "黑方让出中心后从侧翼反击，王翼进攻激烈，是卡尔斯波夫、菲舍尔等大师的招牌。"
+  },
+  {
+    "eco": "A10",
+    "name": "English Opening",
+    "nameZh": "英国式开局",
+    "category": "closed",
+    "mainLine": ["c4"],
+    "variations": [
+      { "name": "Symmetrical Variation", "moves": ["c5"], "note": "对称变体，黑方镜像应对" },
+      { "name": "Reversed Sicilian", "moves": ["e5"], "note": "反向西西里，白方一 tempo 优势" },
+      { "name": "King's English", "moves": ["Nf3", "Nf6", "Nc3"], "note": "王翼英国式，灵活发展" }
+    ],
+    "description": "白方以 c4 控制后翼中心，灵活可转多种结构，是战略型选手的偏好。"
+  },
+  {
+    "eco": "E20",
+    "name": "Nimzo-Indian Defense",
+    "nameZh": "尼姆佐-印度防御",
+    "category": "closed",
+    "mainLine": ["d4", "Nf6", "c4", "e6", "Nc3", "Bb4"],
+    "variations": [
+      { "name": "Rubinstein Variation", "moves": ["e3"], "note": "鲁宾斯坦变体，白方稳健发展" },
+      { "name": "Kasparov Variation", "moves": ["g3"], "note": "卡斯帕罗夫变体，侧翼出象" },
+      { "name": "Sämisch Variation", "moves": ["a3", "Bxc3+", "bxc3"], "note": "塞米什变体，白方接受双象结构" }
+    ],
+    "description": "黑方以 Bb4 钉住马控制 e4，结构灵活，是大师级最常用的印度防御之一。"
+  },
+  {
+    "eco": "D10",
+    "name": "Slav Defense",
+    "nameZh": "斯拉夫防御",
+    "category": "closed",
+    "mainLine": ["d4", "d5", "c4", "c6"],
+    "variations": [
+      { "name": "Main Line", "moves": ["Nf3", "Nf6", "Nc3", "dxc4"], "note": "主线，黑方接纳弃兵" },
+      { "name": "Exchange Variation", "moves": ["cxd5", "cxd5"], "note": "交换变体，对称结构" },
+      { "name": "Anti-Slav", "moves": ["Nf3", "Nf6", "e3"], "note": "反斯拉夫，回避主流理论" }
+    ],
+    "description": "黑方以 c6 支持 d5，避免 c8 象被锁，结构稳健，是后翼弃兵的主流应法之一。"
+  }
+]
