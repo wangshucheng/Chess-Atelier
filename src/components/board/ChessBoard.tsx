@@ -1,5 +1,5 @@
 // 棋盘组件：封装 react-chessboard，统一主题与交互
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Chessboard } from 'react-chessboard';
 
 interface ChessBoardProps {
@@ -12,11 +12,6 @@ interface ChessBoardProps {
   boardWidth?: number;
 }
 
-// react-chessboard 在 boardWidth 缺省时依赖内置 ResizeObserver 测量容器宽度，
-// 而该测量在 React18 StrictMode 下会读取到 null/0，导致棋盘塌缩。
-// 这里改为自行测量父容器宽度并显式传入，给出稳定的兜底值。
-const FALLBACK_WIDTH = 480;
-
 export default function ChessBoard({
   fen,
   onDrop,
@@ -26,37 +21,31 @@ export default function ChessBoard({
   arePiecesDraggable = true,
   boardWidth,
 }: ChessBoardProps) {
+  // react-chessboard 在 boardWidth 缺省时依赖内部的 ResizeObserver 测量容器宽度，
+  // 该测量在某些时序下会在 null 引用上调用 getBoundingClientRect 而报错。
+  // 这里改为自行测量父容器宽度并显式传入（带兜底值），彻底规避库内置测量路径。
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
 
-  useEffect(() => {
-    // 若调用方已显式给定宽度，则不自行测量
-    if (boardWidth != null) {
-      setMeasuredWidth(null);
-      return;
-    }
+  useLayoutEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
-
-    const update = () => {
-      const w = el.clientWidth;
-      if (w > 0) setMeasuredWidth(w);
+    const measure = () => {
+      const w = el.getBoundingClientRect().width;
+      if (w > 0) setContainerWidth(w);
     };
-    update();
-
-    let observer: ResizeObserver | undefined;
+    measure();
+    let ro: ResizeObserver | undefined;
     if (typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(update);
-      observer.observe(el);
+      ro = new ResizeObserver(measure);
+      ro.observe(el);
     }
     return () => {
-      observer?.disconnect();
+      ro?.disconnect();
     };
-  }, [boardWidth]);
+  }, []);
 
-  // 最终宽度：显式 > 测量值 > 兜底
-  const resolvedWidth =
-    boardWidth ?? measuredWidth ?? (typeof window !== 'undefined' ? Math.min(FALLBACK_WIDTH, window.innerWidth - 80) : FALLBACK_WIDTH);
+  const resolvedWidth = boardWidth ?? (containerWidth > 0 ? containerWidth : 480);
 
   // 高亮方格样式
   const customSquareStyles = useMemo(() => {
@@ -76,7 +65,7 @@ export default function ChessBoard({
   }, [arrowHints]);
 
   return (
-    <div className="relative" ref={wrapperRef}>
+    <div className="relative w-full flex justify-center" ref={wrapperRef}>
       <div className="absolute -inset-2 border border-gold/20 rounded-sm pointer-events-none" />
       <Chessboard
         position={fen}
