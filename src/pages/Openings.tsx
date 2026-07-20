@@ -1,7 +1,7 @@
 // 开局训练库浏览页：卡片网格 + 分类筛选
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, Search, ArrowRight, Layers } from 'lucide-react';
+import { BookOpen, Search, ArrowRight, Layers, AlertTriangle, RotateCcw } from 'lucide-react';
 import { loadOpenings } from '@/data';
 import type { Opening } from '@/types';
 import { useAppStore } from '@/store/useAppStore';
@@ -22,16 +22,46 @@ const CATEGORY_FILTERS: ({ key: 'all' | Opening['category']; label: string })[] 
 export default function Openings() {
   const [openings, setOpenings] = useState<Opening[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | Opening['category']>('all');
   const [query, setQuery] = useState('');
-  const { progress } = useAppStore();
+  // 只订阅 openingProgress，避免 playStats 等无关变化触发重渲染
+  const openingProgress = useAppStore((s) => s.progress.openingProgress);
 
   useEffect(() => {
-    loadOpenings().then((data) => {
-      setOpenings(data);
-      setLoading(false);
-    });
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    loadOpenings()
+      .then((data) => {
+        if (cancelled) return;
+        setOpenings(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLoadError(err instanceof Error ? err.message : '开局数据加载失败');
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, []);
+
+  if (loadError) {
+    return (
+      <div className="px-4 md:px-10 py-16 max-w-[1400px] mx-auto">
+        <div className="card-gold rounded-sm p-12 text-center">
+          <AlertTriangle size={32} className="text-wine mx-auto mb-3" />
+          <div className="text-sm text-ivoryDim mb-4">开局数据加载失败：{loadError}</div>
+          <button
+            onClick={() => window.location.reload()}
+            className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest inline-flex items-center gap-1.5"
+          >
+            <RotateCcw size={12} /> 重新加载
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const filtered = useMemo(() => {
     return openings.filter((o) => {
@@ -50,7 +80,7 @@ export default function Openings() {
   }, [openings, filter, query]);
 
   return (
-    <div className="px-10 py-8 max-w-[1400px] mx-auto">
+    <div className="px-4 md:px-10 py-8 max-w-[1400px] mx-auto">
       {/* 标题 */}
       <header className="mb-8">
         <div className="flex items-center gap-2 mb-2 animate-fade-up">
@@ -76,20 +106,22 @@ export default function Openings() {
       {/* 工具栏：搜索 + 分类筛选 */}
       <div className="card-gold rounded-sm p-4 mb-6 flex items-center gap-4 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gold/50" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gold/50" aria-hidden="true" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索开局名称、ECO 或关键词…"
+            aria-label="搜索开局"
             className="w-full pl-9 pr-3 py-2 bg-ink-800/60 border border-gold/15 rounded-sm text-sm text-ivory placeholder:text-ivoryDim/50 focus:outline-none focus:border-gold/50 transition-colors"
           />
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5" role="group" aria-label="开局分类筛选">
           {CATEGORY_FILTERS.map((f) => (
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
+              aria-pressed={filter === f.key}
               className={`px-3 py-1.5 rounded-sm text-xs uppercase tracking-widest transition-colors ${
                 filter === f.key
                   ? 'bg-gold/15 border border-gold/50 text-gold'
@@ -122,7 +154,7 @@ export default function Openings() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filtered.map((o, idx) => {
-            const practiced = progress.openingProgress[o.eco];
+            const practiced = openingProgress[o.eco];
             return (
               <Link
                 key={o.eco}

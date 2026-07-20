@@ -27,18 +27,19 @@ function mvvLvaScore(game: Chess, move: { from: string; to: string; promotion?: 
 
   let score = 0;
   if (victim) {
+    if (!attacker) return 0; // 数据异常：理论上吃子方必有攻击者
     // 吃子：victim 价值 - attacker 价值（吃大子用小子优先）
-    score += PIECE_VALUES[victim.type] * 10 - PIECE_VALUES[attacker?.type || 'p'];
+    score += PIECE_VALUES[victim.type] * 10 - PIECE_VALUES[attacker.type];
   }
-  // 升变奖励
-  if (move.promotion) {
-    score += PIECE_VALUES[move.promotion as keyof typeof PIECE_VALUES] || 0;
+  // 升变奖励：仅当升变为合法棋子类型时加分
+  if (move.promotion && move.promotion in PIECE_VALUES) {
+    score += PIECE_VALUES[move.promotion as keyof typeof PIECE_VALUES];
   }
   return score;
 }
 
 // 将军奖励
-function checkBonus(game: Chess, san: string): number {
+function checkBonus(san: string): number {
   if (san.includes('+')) return 50;
   if (san.includes('#')) return 10000;
   return 0;
@@ -48,7 +49,7 @@ function checkBonus(game: Chess, san: string): number {
 export function orderMoves(game: Chess): OrderedMove[] {
   const verboseMoves = game.moves({ verbose: true });
   const ordered = verboseMoves.map((m) => {
-    const score = mvvLvaScore(game, m) + checkBonus(game, m.san);
+    const score = mvvLvaScore(game, m) + checkBonus(m.san);
     return {
       san: m.san,
       from: m.from,

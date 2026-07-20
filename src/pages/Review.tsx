@@ -1,17 +1,22 @@
 // 棋局复盘页：PGN/FEN 导入 + 逐步回放 + 评估曲线 + 走法分析
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Chess } from 'chess.js';
 import ChessBoard from '@/components/board/ChessBoard';
+import EvalCurve from '@/components/board/EvalCurve';
 import { parsePgn, parseFen, detectInputFormat, type ParsedPgn } from '@/lib/pgnParser';
 import { evaluatePosition } from '@/engine/evaluation';
-import { evalToText } from '@/engine/explainer';
+import { evalToText, classifyMoveQuality } from '@/engine/explainer';
 import { useAppStore } from '@/store/useAppStore';
+import type { EvalCurvePoint } from '@/components/board/EvalCurve';
 import type { MoveQuality } from '@/types';
 import {
   Reply, Upload, Play, Pause, ChevronLeft, ChevronRight,
   SkipBack, SkipForward, Trash2, FileText, TrendingUp, AlertTriangle,
   Sparkles, Clock,
 } from 'lucide-react';
+
+// PGN 输入长度上限：防止过大输入撑爆 localStorage 配额
+const MAX_PGN_LENGTH = 100_000;
 
 const SAMPLE_PGN = `[Event "Immortal Game"]
 [Site "London"]
@@ -38,14 +43,6 @@ interface MoveAnalysis {
   moveNo: number;
 }
 
-function classifyByDelta(delta: number): MoveQuality {
-  if (delta < -300) return 'blunder';
-  if (delta < -100) return 'mistake';
-  if (delta < -50) return 'dubious';
-  if (delta < 50) return 'good';
-  return 'best';
-}
-
 const QUALITY_STYLE: Record<MoveQuality, { label: string; symbol: string; color: string; bg: string }> = {
   best: { label: '最佳', symbol: '!!', color: 'text-moss', bg: 'bg-moss/15 border-moss/40' },
   good: { label: '良好', symbol: '!', color: 'text-gold', bg: 'bg-gold/10 border-gold/30' },
@@ -53,6 +50,17 @@ const QUALITY_STYLE: Record<MoveQuality, { label: string; symbol: string; color:
   mistake: { label: '失误', symbol: '?', color: 'text-wine', bg: 'bg-wine/10 border-wine/30' },
   blunder: { label: '败着', symbol: '??', color: 'text-wine', bg: 'bg-wine/20 border-wine/50' },
 };
+
+// 走法单元格键盘激活（Enter / Space）
+function handleMoveCellKey(
+  e: KeyboardEvent<HTMLTableCellElement>,
+  activate: () => void,
+) {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    activate();
+  }
+}
 
 export default function Review() {
   const [input, setInput] = useState('');
@@ -65,7 +73,7 @@ export default function Review() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
 
-  const { recordReview } = useAppStore();
+  const recordReview = useAppStore((s) => s.recordReview);
   const playTimerRef = useRef<number | null>(null);
 
   // 解析输入
@@ -79,6 +87,11 @@ export default function Review() {
 
     if (!input.trim()) {
       setParseError('请输入 PGN 或 FEN 文本');
+      return;
+    }
+
+    if (input.length > MAX_PGN_LENGTH) {
+      setParseError(`输入过长（${input.length} 字符），上限 ${MAX_PGN_LENGTH}`);
       return;
     }
 
@@ -120,41 +133,59 @@ export default function Review() {
     const moves = parsed.moves;
     const results: MoveAnalysis[] = [];
     let i = 0;
+    let cancelled = false;
+    let timer: number | null = null;
 
     const step = () => {
+      if (cancelled) return;
       const batchSize = 4;
       const end = Math.min(i + batchSize, moves.length);
-      for (; i < end; i++) {
-        const fenBefore = fens[i];
-        const fenAfter = fens[i + 1];
-        const gameBefore = new Chess(fenBefore);
-        const gameAfter = new Chess(fenAfter);
-        const evalBefore = evaluatePosition(gameBefore);
-        const evalAfter = evaluatePosition(gameAfter);
-        const mover = gameBefore.turn(); // 谁走的这步
-        // delta 从走子方视角：白方走子，正 delta = eval 升高 = 好
-        const delta = mover === 'w' ? evalAfter - evalBefore : evalBefore - evalAfter;
-        results.push({
-          san: moves[i],
-          fenBefore,
-          fenAfter,
-          evalBefore,
-          evalAfter,
-          delta,
-          quality: classifyByDelta(delta),
-          mover,
-          moveNo: Math.floor(i / 2) + 1,
-        });
+      try {
+        for (; i < end; i++) {
+          const fenBefore = fens[i];
+          const fenAfter = fens[i + 1];
+          const gameBefore = new Chess(fenBefore);
+          const gameAfter = new Chess(fenAfter);
+          const evalBefore = evaluatePosition(gameBefore);
+          const evalAfter = evaluatePosition(gameAfter);
+          const mover = gameBefore.turn(); // 谁走的这步
+          // delta 从走子方视角：白方走子，正 delta = eval 升高 = 好
+          const delta = mover === 'w' ? evalAfter - evalBefore : evalBefore - evalAfter;
+          results.push({
+            san: moves[i],
+            fenBefore,
+            fenAfter,
+            evalBefore,
+            evalAfter,
+            delta,
+            quality: classifyMoveQuality(delta),
+            mover,
+            moveNo: Math.floor(i / 2) + 1,
+          });
+        }
+      } catch (err) {
+        // 非法 FEN 或评估异常：终止分析并提示用户
+        if (!cancelled) {
+          setAnalyzing(false);
+          setParseError(`分析失败：${err instanceof Error ? err.message : String(err)}（在第 ${i + 1} 手附近）`);
+        }
+        return;
       }
+      if (cancelled) return;
       setAnalyzeProgress(Math.round((i / moves.length) * 100));
       if (i < moves.length) {
-        setTimeout(step, 0);
+        timer = window.setTimeout(step, 0);
       } else {
         setAnalyses(results);
         setAnalyzing(false);
       }
     };
-    setTimeout(step, 50);
+    timer = window.setTimeout(step, 50);
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) clearTimeout(timer);
+    };
   }, [parsed]);
 
   // 自动回放
@@ -179,8 +210,8 @@ export default function Review() {
     };
   }, [isPlaying, currentIdx, parsed]);
 
-  const totalSteps = parsed ? parsed.fens.length : 1;
-  const currentFen = parsed
+  const totalSteps = parsed ? Math.max(parsed.fens.length, 1) : 1;
+  const currentFen = parsed && parsed.fens.length > 0
     ? parsed.fens[Math.min(currentIdx, parsed.fens.length - 1)]
     : singleFen || new Chess().fen();
 
@@ -220,9 +251,9 @@ export default function Review() {
   }, []);
 
   // 评估曲线数据
-  const evalCurveData = useMemo(() => {
+  const evalCurveData = useMemo<EvalCurvePoint[] | null>(() => {
     if (analyses.length === 0) return null;
-    const points: { x: number; y: number; eval: number }[] = [];
+    const points: EvalCurvePoint[] = [];
     // 起点
     points.push({ x: 0, y: 0, eval: analyses[0]?.evalBefore ?? 0 });
     analyses.forEach((a, i) => {
@@ -242,7 +273,7 @@ export default function Review() {
   }, [analyses]);
 
   return (
-    <div className="px-10 py-8 max-w-[1500px] mx-auto">
+    <div className="px-4 md:px-10 py-8 max-w-[1500px] mx-auto">
       {/* 标题 */}
       <header className="mb-8">
         <div className="flex items-center gap-2 mb-2 animate-fade-up">
@@ -279,6 +310,7 @@ export default function Review() {
           onChange={(e) => setInput(e.target.value)}
           placeholder={`粘贴 PGN 棋谱或 FEN 字符串…\n\n示例 FEN：r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3\n示例 PGN：1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 ...`}
           rows={5}
+          aria-label="棋谱输入"
           className="w-full px-3 py-2 bg-ink-800/60 border border-gold/15 rounded-sm text-sm text-ivory placeholder:text-ivoryDim/40 font-mono focus:outline-none focus:border-gold/50 transition-colors resize-y"
         />
         <div className="mt-3 flex items-center gap-3">
@@ -312,24 +344,25 @@ export default function Review() {
             {/* 回放控制 */}
             <div className="card-gold rounded-sm p-4">
               <div className="flex items-center gap-2">
-                <button onClick={handleStart} disabled={currentIdx === 0} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title="跳到开始">
+                <button onClick={handleStart} disabled={currentIdx === 0} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title="跳到开始" aria-label="跳到开始">
                   <SkipBack size={12} />
                 </button>
-                <button onClick={handleStepPrev} disabled={currentIdx === 0} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title="上一步">
+                <button onClick={handleStepPrev} disabled={currentIdx === 0} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title="上一步" aria-label="上一步">
                   <ChevronLeft size={12} />
                 </button>
                 <button
                   onClick={handleTogglePlay}
                   disabled={!parsed}
                   className="btn-gold-solid px-4 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  aria-label={isPlaying ? '暂停回放' : '播放回放'}
                 >
                   {isPlaying ? <Pause size={12} /> : <Play size={12} />}
                   {isPlaying ? '暂停' : '播放'}
                 </button>
-                <button onClick={handleStepNext} disabled={currentIdx >= totalSteps - 1} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title="下一步">
+                <button onClick={handleStepNext} disabled={currentIdx >= totalSteps - 1} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title="下一步" aria-label="下一步">
                   <ChevronRight size={12} />
                 </button>
-                <button onClick={handleEnd} disabled={currentIdx >= totalSteps - 1} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title="跳到结尾">
+                <button onClick={handleEnd} disabled={currentIdx >= totalSteps - 1} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title="跳到结尾" aria-label="跳到结尾">
                   <SkipForward size={12} />
                 </button>
                 <div className="ml-auto flex items-center gap-3 text-xs text-ivoryDim">
@@ -337,7 +370,14 @@ export default function Review() {
                   <span className="font-mono">
                     {currentIdx} / {totalSteps - 1}
                   </span>
-                  <div className="w-32 h-1 bg-ink-800 rounded-full overflow-hidden">
+                  <div
+                    className="w-32 h-1 bg-ink-800 rounded-full overflow-hidden"
+                    role="progressbar"
+                    aria-label="回放进度"
+                    aria-valuemin={0}
+                    aria-valuemax={Math.max(totalSteps - 1, 0)}
+                    aria-valuenow={currentIdx}
+                  >
                     <div
                       className="h-full bg-gold transition-all duration-300"
                       style={{ width: `${totalSteps > 1 ? (currentIdx / (totalSteps - 1)) * 100 : 0}%` }}
@@ -481,6 +521,11 @@ export default function Review() {
                                 currentIdx - 1 === wIdx ? 'bg-gold/20 text-ivory' : 'text-ivory/80 hover:bg-gold/10'
                               }`}
                               onClick={() => { setIsPlaying(false); setCurrentIdx(wIdx + 1); }}
+                              onKeyDown={(e) => handleMoveCellKey(e, () => { setIsPlaying(false); setCurrentIdx(wIdx + 1); })}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`第 ${rowIdx + 1} 手白方走 ${wMove}`}
+                              aria-current={currentIdx - 1 === wIdx ? 'true' : undefined}
                             >
                               <span className="flex items-center gap-1.5">
                                 {wMove}
@@ -496,6 +541,11 @@ export default function Review() {
                                 currentIdx - 1 === bIdx ? 'bg-gold/20 text-ivory' : bMove ? 'text-ivory/80 hover:bg-gold/10' : ''
                               }`}
                               onClick={() => { if (bMove) { setIsPlaying(false); setCurrentIdx(bIdx + 1); } }}
+                              onKeyDown={(e) => { if (bMove) handleMoveCellKey(e, () => { setIsPlaying(false); setCurrentIdx(bIdx + 1); }); }}
+                              role={bMove ? 'button' : undefined}
+                              tabIndex={bMove ? 0 : undefined}
+                              aria-label={bMove ? `第 ${rowIdx + 1} 手黑方走 ${bMove}` : undefined}
+                              aria-current={currentIdx - 1 === bIdx ? 'true' : undefined}
                             >
                               {bMove && (
                                 <span className="flex items-center gap-1.5">
@@ -531,73 +581,5 @@ export default function Review() {
         </div>
       )}
     </div>
-  );
-}
-
-// 评估曲线组件（内联 SVG）
-function EvalCurve({
-  data,
-  currentIdx,
-  height = 140,
-}: {
-  data: { x: number; y: number; eval: number }[] | null;
-  currentIdx: number;
-  height?: number;
-}) {
-  const width = 600;
-  const padding = { top: 8, right: 8, bottom: 8, left: 8 };
-  const chartW = width - padding.left - padding.right;
-  const chartH = height - padding.top - padding.bottom;
-
-  if (!data || data.length < 2) {
-    return (
-      <div className="flex items-center justify-center text-xs text-ivoryDim/50 italic" style={{ height }}>
-        评估数据将在解析后生成…
-      </div>
-    );
-  }
-
-  const maxAbs = 800; // 评估值范围 ±800
-  const toY = (evalScore: number) => {
-    const clamped = Math.max(-maxAbs, Math.min(maxAbs, evalScore));
-    // tanh 平滑映射
-    const normalized = Math.tanh(clamped / 400); // [-1, 1]
-    // 白优在上方（y 小），黑优在下方（y 大）
-    return padding.top + chartH / 2 - normalized * (chartH / 2 - 4);
-  };
-  const toX = (idx: number) => {
-    return padding.left + (data.length > 1 ? (idx / (data.length - 1)) * chartW : chartW / 2);
-  };
-
-  // 构建路径
-  const linePath = data.map((p, i) => `${i === 0 ? 'M' : 'L'} ${toX(p.x).toFixed(1)} ${toY(p.eval).toFixed(1)}`).join(' ');
-  // 填充区域路径（白方优势区域填充金色，黑方填充酒红）
-  const areaPath = `${linePath} L ${toX(data[data.length - 1].x).toFixed(1)} ${padding.top + chartH / 2} L ${toX(0).toFixed(1)} ${padding.top + chartH / 2} Z`;
-
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ height }}>
-      {/* 背景网格 */}
-      <line x1={padding.left} y1={padding.top + chartH / 2} x2={width - padding.right} y2={padding.top + chartH / 2} stroke="rgba(212,165,116,0.2)" strokeWidth="1" strokeDasharray="2 4" />
-      <line x1={padding.left} y1={padding.top} x2={width - padding.right} y2={padding.top} stroke="rgba(212,165,116,0.08)" strokeWidth="1" />
-      <line x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} stroke="rgba(212,165,116,0.08)" strokeWidth="1" />
-
-      {/* 填充区域 */}
-      <path d={areaPath} fill="rgba(212,165,116,0.12)" />
-
-      {/* 曲线 */}
-      <path d={linePath} fill="none" stroke="#D4A574" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-
-      {/* 当前位置标记 */}
-      {currentIdx >= 0 && currentIdx < data.length && (
-        <>
-          <line
-            x1={toX(currentIdx)} y1={padding.top}
-            x2={toX(currentIdx)} y2={height - padding.bottom}
-            stroke="rgba(212,165,116,0.4)" strokeWidth="1" strokeDasharray="2 2"
-          />
-          <circle cx={toX(currentIdx)} cy={toY(data[currentIdx].eval)} r="4" fill="#D4A574" stroke="#0E0F13" strokeWidth="2" />
-        </>
-      )}
-    </svg>
   );
 }

@@ -8,7 +8,7 @@ import { useAppStore } from '@/store/useAppStore';
 import type { Opening } from '@/types';
 import {
   BookOpen, ArrowLeft, ChevronLeft, ChevronRight, RotateCcw,
-  GitBranch, Check, Target, Sparkles, Award,
+  GitBranch, Check, Target, Sparkles, Award, AlertTriangle,
 } from 'lucide-react';
 
 export default function OpeningDetail() {
@@ -16,23 +16,40 @@ export default function OpeningDetail() {
   const navigate = useNavigate();
   const [opening, setOpening] = useState<Opening | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // 演练状态
-  const gameRef = useRef(new Chess());
+  const gameRef = useRef<Chess | null>(null);
+  if (!gameRef.current) gameRef.current = new Chess();
   const [fen, setFen] = useState(gameRef.current.fen());
   const [moves, setMoves] = useState<string[]>([]); // 已走的 SAN
   const [activeVariationIdx, setActiveVariationIdx] = useState<number | null>(null);
   const [exploreMode, setExploreMode] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
 
-  const { recordOpeningPractice } = useAppStore();
+  const recordOpeningPractice = useAppStore((s) => s.recordOpeningPractice);
 
   useEffect(() => {
-    loadOpenings().then((data) => {
-      const found = data.find((o) => o.eco === eco);
-      setOpening(found ?? null);
-      setLoading(false);
-    });
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    // 切换开局时重置演练状态，避免旧开局的"已演练"标记和变体选择残留
+    setCompletedSteps(new Set());
+    setActiveVariationIdx(null);
+    setExploreMode(false);
+    loadOpenings()
+      .then((data) => {
+        if (cancelled) return;
+        const found = data.find((o) => o.eco === eco);
+        setOpening(found ?? null);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLoadError(err instanceof Error ? err.message : '开局数据加载失败');
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [eco]);
 
   // 重置到指定步数
@@ -46,41 +63,59 @@ export default function OpeningDetail() {
     const allMoves = [...main, ...varMoves];
     const target = Math.min(step, allMoves.length);
     for (let i = 0; i < target; i++) {
-      try { game.move(allMoves[i]); } catch { break; }
+      try {
+        game.move(allMoves[i]);
+      } catch (err) {
+        // 开局数据中的非法走子：记录便于排查，停止推演
+        console.warn(`[OpeningDetail] 非法走子 at step ${i}:`, allMoves[i], err);
+        break;
+      }
     }
     gameRef.current = game;
     setFen(game.fen());
     setMoves(game.history({ verbose: true }).map((m) => m.san));
   }, [opening, activeVariationIdx]);
 
-  // 选择变体
+  // 选择变体：仅更新状态，由下面的 effect 同步局面
   const handleSelectVariation = useCallback((idx: number) => {
     setActiveVariationIdx(idx);
     setExploreMode(false);
-    // 重置到主线 + 变体全部走完
-    setTimeout(() => resetToStep((opening?.mainLine.length ?? 0) + (opening?.variations[idx]?.moves.length ?? 0), true), 0);
-  }, [opening, resetToStep]);
+  }, []);
+
+  // activeVariationIdx 变化时重置局面到主线 + 变体全部走完
+  useEffect(() => {
+    if (!opening || activeVariationIdx === null) return;
+    const variation = opening.variations[activeVariationIdx];
+    if (!variation) return;
+    const totalSteps = opening.mainLine.length + variation.moves.length;
+    resetToStep(totalSteps, true);
+  }, [activeVariationIdx, opening, resetToStep]);
 
   // 上一步
   const handlePrev = useCallback(() => {
     if (moves.length === 0) return;
-    gameRef.current.undo();
-    setFen(gameRef.current.fen());
-    setMoves(gameRef.current.history({ verbose: true }).map((m) => m.san));
+    const game = gameRef.current;
+    if (!game) return;
+    game.undo();
+    setFen(game.fen());
+    setMoves(game.history({ verbose: true }).map((m) => m.san));
   }, [moves.length]);
 
   // 下一步：按主线/变体顺序自动走
   const handleNext = useCallback(() => {
     if (!opening) return;
     const main = opening.mainLine;
-    const varMoves = activeVariationIdx !== null ? opening.variations[activeVariationIdx].moves : [];
+    const variation = activeVariationIdx !== null ? opening.variations[activeVariationIdx] : null;
+    const varMoves = variation?.moves ?? [];
     const allMoves = [...main, ...varMoves];
     if (moves.length >= allMoves.length) return;
     const nextSan = allMoves[moves.length];
+    const game = gameRef.current;
+    if (!game) return;
     try {
-      const m = gameRef.current.move(nextSan);
+      const m = game.move(nextSan);
       if (m) {
-        setFen(gameRef.current.fen());
+        setFen(game.fen());
         setMoves((prev) => [...prev, m.san]);
         // 标记完成
         if (moves.length + 1 === allMoves.length) {
@@ -90,8 +125,9 @@ export default function OpeningDetail() {
           recordOpeningPractice(opening.eco, 100);
         }
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      // 主线/变体走子数据异常：记录并提示，避免静默卡住
+      console.warn(`[OpeningDetail] 下一步走子失败 at step ${moves.length}:`, nextSan, err);
     }
   }, [opening, activeVariationIdx, moves.length, recordOpeningPractice]);
 
@@ -105,10 +141,12 @@ export default function OpeningDetail() {
   // 玩家自由探索：拖拽走子
   const handleDrop = useCallback((from: string, to: string, promotion?: string): boolean => {
     if (!exploreMode) return false;
+    const game = gameRef.current;
+    if (!game) return false;
     try {
-      const m = gameRef.current.move({ from, to, promotion });
+      const m = game.move({ from, to, promotion });
       if (!m) return false;
-      setFen(gameRef.current.fen());
+      setFen(game.fen());
       setMoves((prev) => [...prev, m.san]);
       return true;
     } catch {
@@ -124,13 +162,14 @@ export default function OpeningDetail() {
 
   const totalSteps = useMemo(() => {
     if (!opening) return 0;
-    const varMoves = activeVariationIdx !== null ? opening.variations[activeVariationIdx].moves.length : 0;
+    const variation = activeVariationIdx !== null ? opening.variations[activeVariationIdx] : null;
+    const varMoves = variation?.moves.length ?? 0;
     return opening.mainLine.length + varMoves;
   }, [opening, activeVariationIdx]);
 
   if (loading) {
     return (
-      <div className="px-10 py-16 max-w-[1200px] mx-auto">
+      <div className="px-4 md:px-10 py-16 max-w-[1200px] mx-auto">
         <div className="card-gold rounded-sm p-12 text-center animate-pulse">
           <div className="text-sm text-ivoryDim">加载开局数据…</div>
         </div>
@@ -138,9 +177,23 @@ export default function OpeningDetail() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="px-4 md:px-10 py-16 max-w-[1200px] mx-auto">
+        <div className="card-gold rounded-sm p-12 text-center">
+          <AlertTriangle size={32} className="text-wine mx-auto mb-3" />
+          <div className="text-sm text-ivoryDim mb-4">开局数据加载失败：{loadError}</div>
+          <Link to="/openings" className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest inline-flex items-center gap-1.5">
+            <ArrowLeft size={12} /> 返回开局库
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (!opening) {
     return (
-      <div className="px-10 py-16 max-w-[1200px] mx-auto">
+      <div className="px-4 md:px-10 py-16 max-w-[1200px] mx-auto">
         <div className="card-gold rounded-sm p-12 text-center">
           <BookOpen size={32} className="text-gold/40 mx-auto mb-3" />
           <div className="text-sm text-ivoryDim mb-4">未找到 ECO: {eco} 的开局</div>
@@ -157,7 +210,7 @@ export default function OpeningDetail() {
   const activeVariation = activeVariationIdx !== null ? opening.variations[activeVariationIdx] : null;
 
   return (
-    <div className="px-10 py-8 max-w-[1400px] mx-auto">
+    <div className="px-4 md:px-10 py-8 max-w-[1400px] mx-auto">
       {/* 顶部：返回 + 标题 */}
       <div className="mb-6">
         <button
@@ -211,7 +264,14 @@ export default function OpeningDetail() {
             </div>
 
             {/* 进度条 */}
-            <div className="h-1 bg-ink-800 rounded-full overflow-hidden mb-4">
+            <div
+              className="h-1 bg-ink-800 rounded-full overflow-hidden mb-4"
+              role="progressbar"
+              aria-label="开局演练进度"
+              aria-valuemin={0}
+              aria-valuemax={totalSteps}
+              aria-valuenow={currentStep}
+            >
               <div
                 className="h-full bg-gradient-to-r from-gold/60 to-gold transition-all duration-300"
                 style={{ width: `${totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0}%` }}

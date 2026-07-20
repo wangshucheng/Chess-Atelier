@@ -1,36 +1,35 @@
 // 习题答题页：加载某难度习题 · 玩家走子校验 · 自动应招 · 提示与解答
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import ChessBoard from '@/components/board/ChessBoard';
 import { getPuzzlesByLevel } from '@/data';
+import { PUZZLE_LEVEL_MAP } from '@/data/puzzleLevels';
 import { useAppStore } from '@/store/useAppStore';
+import { useShallow } from 'zustand/react/shallow';
 import { moveToSan } from '@/lib/chess';
-import type { Puzzle } from '@/types';
+import { buildHintHighlights, buildHintArrows } from '@/lib/highlights';
+import type { Puzzle, PuzzleLevel } from '@/types';
 import {
   Puzzle as PuzzleIcon, ArrowLeft, ArrowRight, Lightbulb, Eye, RotateCcw,
-  Check, X, Target, Flame, Trophy, Crown, ChevronRight, Sparkles,
+  Check, X, Target, ChevronRight, Sparkles,
 } from 'lucide-react';
-
-const LEVEL_META: Record<number, { title: string; en: string; icon: typeof Target; accent: string }> = {
-  1: { title: '一步杀', en: 'Mate in 1', icon: Target, accent: 'text-moss' },
-  2: { title: '两步杀', en: 'Mate in 2', icon: Flame, accent: 'text-gold' },
-  3: { title: '三步杀', en: 'Mate in 3', icon: Trophy, accent: 'text-gold' },
-  4: { title: '多步杀', en: 'Mate in N', icon: Crown, accent: 'text-wine' },
-};
 
 type Status = 'solving' | 'wrong' | 'solved';
 
 export default function PuzzleDetail() {
   const { level: levelStr } = useParams<{ level: string }>();
-  const level = Math.max(1, Math.min(4, Number(levelStr) || 1)) as 1 | 2 | 3 | 4;
+  // 限定 1-4 范围并断言为 PuzzleLevel 字面量联合（运行时已 clamp）
+  const level = (Math.max(1, Math.min(4, Number(levelStr) || 1))) as PuzzleLevel;
   const navigate = useNavigate();
 
   const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [currentIdx, setCurrentIdx] = useState(0);
 
-  const gameRef = useRef(new Chess());
+  const gameRef = useRef<Chess | null>(null);
+  if (!gameRef.current) gameRef.current = new Chess();
   const [fen, setFen] = useState('');
   const [playerColor, setPlayerColor] = useState<'white' | 'black'>('white');
   const [currentStep, setCurrentStep] = useState(0); // 已完成的 solution 步数
@@ -39,19 +38,36 @@ export default function PuzzleDetail() {
   const [showSolution, setShowSolution] = useState(false);
   const [feedback, setFeedback] = useState<string>('');
 
-  const { recordPuzzleSolved, recordPuzzleAttempt, progress } = useAppStore();
+  const { recordPuzzleSolved, recordPuzzleAttempt, progress } = useAppStore(
+    useShallow((s) => ({
+      recordPuzzleSolved: s.recordPuzzleSolved,
+      recordPuzzleAttempt: s.recordPuzzleAttempt,
+      progress: s.progress,
+    })),
+  );
 
   // 加载该难度的所有习题
   useEffect(() => {
-    getPuzzlesByLevel(level).then((data) => {
-      if (data.length === 0) {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    getPuzzlesByLevel(level)
+      .then((data) => {
+        if (cancelled) return;
+        if (data.length === 0) {
+          setLoading(false);
+          return;
+        }
+        setPuzzles(data);
+        loadPuzzle(data[0]);
         setLoading(false);
-        return;
-      }
-      setPuzzles(data);
-      loadPuzzle(data[0]);
-      setLoading(false);
-    });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : '习题加载失败');
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [level]);
 
@@ -78,6 +94,7 @@ export default function PuzzleDetail() {
     if (currentStep % 2 === 1 && currentStep < currentPuzzle.solution.length) {
       const timer = setTimeout(() => {
         const game = gameRef.current;
+        if (!game) return;
         try {
           const m = game.move(currentPuzzle.solution[currentStep]);
           if (m) {
@@ -89,9 +106,17 @@ export default function PuzzleDetail() {
               recordPuzzleSolved(currentPuzzle.id, level);
               setFeedback('全部正确，习题完成！');
             }
+          } else {
+            // 走子返回 null（非法），习题数据异常
+            setStatus('wrong');
+            setFeedback(`习题数据异常：solution[${currentStep}]="${currentPuzzle.solution[currentStep]}" 不合法，请跳过此题`);
+            recordPuzzleAttempt(level);
           }
-        } catch {
-          // solution 中对手走子失败，跳过
+        } catch (e) {
+          // solution 中对手走子抛出异常，明示错误而非静默卡死
+          setStatus('wrong');
+          setFeedback(`习题数据异常：${e instanceof Error ? e.message : '未知错误'}（solution[${currentStep}]）`);
+          recordPuzzleAttempt(level);
         }
       }, 600);
       return () => clearTimeout(timer);
@@ -107,6 +132,7 @@ export default function PuzzleDetail() {
     if (currentStep % 2 !== 0) return false;
 
     const game = gameRef.current;
+    if (!game) return false;
     const san = moveToSan(game.fen(), from, to, promotion);
     if (!san) return false;
 
@@ -169,8 +195,10 @@ export default function PuzzleDetail() {
     if (!currentPuzzle || status !== 'solving') return;
     const expected = currentPuzzle.solution[currentStep];
     if (!expected) return;
+    const current = gameRef.current;
+    if (!current) return;
     // 解析 SAN 起止格
-    const game = new Chess(gameRef.current.fen());
+    const game = new Chess(current.fen());
     const moves = game.moves({ verbose: true });
     const target = moves.find((m) => m.san === expected);
     if (target) {
@@ -189,7 +217,7 @@ export default function PuzzleDetail() {
 
   if (loading) {
     return (
-      <div className="px-10 py-16 max-w-[1200px] mx-auto">
+      <div className="px-6 md:px-10 py-16 max-w-[1200px] mx-auto">
         <div className="card-gold rounded-sm p-12 text-center animate-pulse">
           <div className="text-sm text-ivoryDim">加载习题数据…</div>
         </div>
@@ -197,9 +225,22 @@ export default function PuzzleDetail() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="px-6 md:px-10 py-16 max-w-[1200px] mx-auto">
+        <div className="card-gold rounded-sm p-12 text-center">
+          <div className="text-wine text-sm mb-4">习题加载失败：{error}</div>
+          <Link to="/puzzles" className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest inline-flex items-center gap-1.5">
+            <ArrowLeft size={12} /> 返回习题库
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (puzzles.length === 0) {
     return (
-      <div className="px-10 py-16 max-w-[1200px] mx-auto">
+      <div className="px-4 md:px-10 py-16 max-w-[1200px] mx-auto">
         <div className="card-gold rounded-sm p-12 text-center">
           <PuzzleIcon size={32} className="text-gold/40 mx-auto mb-3" />
           <div className="text-sm text-ivoryDim mb-4">该难度暂无习题</div>
@@ -211,21 +252,20 @@ export default function PuzzleDetail() {
     );
   }
 
-  const meta = LEVEL_META[level];
+  const meta = PUZZLE_LEVEL_MAP[level];
   const MetaIcon = meta.icon;
   const isPlayerTurn = currentStep % 2 === 0 && status === 'solving';
-  const solvedSet = new Set(progress.puzzleProgress.solved);
+  const solvedSet = useMemo(
+    () => new Set(progress.puzzleProgress.solved),
+    [progress.puzzleProgress.solved],
+  );
   const isAlreadySolved = currentPuzzle ? solvedSet.has(currentPuzzle.id) : false;
 
-  const highlightedSquares: { square: string; color: string }[] = [];
-  if (hintMove) {
-    highlightedSquares.push({ square: hintMove.from, color: 'rgba(212,165,116,0.35)' });
-    highlightedSquares.push({ square: hintMove.to, color: 'rgba(212,165,116,0.55)' });
-  }
-  const arrowHints = hintMove ? [{ from: hintMove.from, to: hintMove.to, color: 'rgba(212,165,116,0.85)' }] : [];
+  const highlightedSquares = useMemo(() => buildHintHighlights(hintMove), [hintMove]);
+  const arrowHints = useMemo(() => buildHintArrows(hintMove), [hintMove]);
 
   return (
-    <div className="px-10 py-8 max-w-[1400px] mx-auto">
+    <div className="px-4 md:px-10 py-8 max-w-[1400px] mx-auto">
       {/* 顶部 */}
       <div className="mb-6">
         <button

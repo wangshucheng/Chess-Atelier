@@ -11,6 +11,7 @@ export interface SearchCandidate {
   to: string;
   promotion?: string;
   evaluation: number;  // 从白方视角的评估值
+  principalVariation: string[]; // 该候选的主路径（SAN 序列）
 }
 
 export interface SearchResult {
@@ -67,10 +68,13 @@ export interface Opening {
   description: string;
 }
 
+// 习题难度等级
+export type PuzzleLevel = 1 | 2 | 3 | 4;
+
 // 习题
 export interface Puzzle {
   id: string;
-  level: 1 | 2 | 3 | 4;
+  level: PuzzleLevel;
   fen: string;
   solution: string[];
   theme: string[];
@@ -85,7 +89,7 @@ export interface UserProgress {
     solved: string[];
     streak: number;
     bestStreak: number;
-    byLevel: Record<number, { total: number; solved: number }>;
+    byLevel: Record<PuzzleLevel, { total: number; solved: number }>;
   };
   reviewHistory: { id: string; pgn: string; reviewedAt: number }[];
   totalTrainingMs: number;

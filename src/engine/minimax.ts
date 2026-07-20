@@ -2,12 +2,22 @@
 // 核心算法：递归搜索博弈树，α-β 剪枝去除必不选的分支
 
 import { Chess } from 'chess.js';
-import { evaluatePosition } from './evaluation';
+import { evaluatePosition, isEndgame } from './evaluation';
 import { orderMoves, OrderedMove } from './moveOrdering';
+import { MATE_SCORE } from './constants';
 import type { DifficultyConfig, SearchCandidate, SearchResult } from '@/types';
 
 // 节点计数器（用于统计搜索量）
 let nodesSearched = 0;
+
+// 将杀分数编码：±(MATE_SCORE - distanceToMate)
+// 距离越近分数绝对值越大，更快的将杀更优
+function mateScore(distanceToMate: number, maximizing: boolean): number {
+  // maximizing=true 表示当前节点是被将杀方（白方被将杀 → 负分）
+  // distanceToMate = 距离将杀的步数（1 = 立即将杀）
+  const sign = maximizing ? -1 : 1;
+  return sign * (MATE_SCORE - distanceToMate);
+}
 
 // 主搜索函数
 function minimax(
@@ -19,18 +29,21 @@ function minimax(
   useAlphaBeta: boolean,
   useMoveOrdering: boolean,
   pv: string[],
+  endgame: boolean,
+  plyFromRoot: number,
 ): number {
   nodesSearched++;
 
   if (depth === 0 || game.isGameOver()) {
-    const evalScore = evaluatePosition(game);
-    // 将杀时根据深度调整，让更快的将杀更优
     if (game.isCheckmate()) {
       // 当前轮到方被将杀：若 maximizing=true 表示白方被将杀
-      const mateAdjust = maximizing ? -100000 - depth : 100000 + depth;
-      return mateAdjust;
+      // distanceToMate = plyFromRoot + 1（当前节点到将杀的距离）
+      return mateScore(plyFromRoot + 1, maximizing);
     }
-    return evalScore;
+    if (game.isDraw() || game.isStalemate() || game.isThreefoldRepetition() || game.isInsufficientMaterial()) {
+      return 0;
+    }
+    return evaluatePosition(game, endgame);
   }
 
   // 走子排序
@@ -54,7 +67,7 @@ function minimax(
     for (const m of moves) {
       game.move({ from: m.from, to: m.to, promotion: m.promotion });
       const childPv: string[] = [];
-      const evalScore = minimax(game, depth - 1, alpha, beta, false, useAlphaBeta, useMoveOrdering, childPv);
+      const evalScore = minimax(game, depth - 1, alpha, beta, false, useAlphaBeta, useMoveOrdering, childPv, endgame, plyFromRoot + 1);
       game.undo();
 
       if (evalScore > maxEval) {
@@ -75,7 +88,7 @@ function minimax(
     for (const m of moves) {
       game.move({ from: m.from, to: m.to, promotion: m.promotion });
       const childPv: string[] = [];
-      const evalScore = minimax(game, depth - 1, alpha, beta, true, useAlphaBeta, useMoveOrdering, childPv);
+      const evalScore = minimax(game, depth - 1, alpha, beta, true, useAlphaBeta, useMoveOrdering, childPv, endgame, plyFromRoot + 1);
       game.undo();
 
       if (evalScore < minEval) {
@@ -93,7 +106,7 @@ function minimax(
   }
 }
 
-// 顶层搜索：返回完整结果（含候选走法）
+// 顶层搜索：返回完整结果（含候选走法与各自 PV）
 export function searchBestMove(fen: string, config: DifficultyConfig): SearchResult {
   const startTime = Date.now();
   nodesSearched = 0;
@@ -101,6 +114,7 @@ export function searchBestMove(fen: string, config: DifficultyConfig): SearchRes
   const game = new Chess(fen);
   const isWhiteTurn = game.turn() === 'w';
   const maximizing = isWhiteTurn; // 白方最大化，黑方最小化
+  const endgame = isEndgame(game); // 顶层计算一次，递归内复用
 
   // 走子排序
   let moves: OrderedMove[];
@@ -117,10 +131,11 @@ export function searchBestMove(fen: string, config: DifficultyConfig): SearchRes
     }));
   }
 
-  // 对所有顶层走子逐一评估，收集候选
+  // 对所有顶层走子逐一评估，收集候选（含 PV）
+  // 顶层不剪枝（保留所有候选供 UI 对比），但子树内部正常 α-β 剪枝
   const candidates: SearchCandidate[] = [];
   let alpha = -Infinity;
-  const beta = Infinity;
+  let beta = Infinity;
 
   for (const m of moves) {
     game.move({ from: m.from, to: m.to, promotion: m.promotion });
@@ -134,24 +149,27 @@ export function searchBestMove(fen: string, config: DifficultyConfig): SearchRes
       config.useAlphaBeta,
       config.useMoveOrdering,
       childPv,
+      endgame,
+      1,
     );
     game.undo();
 
-    candidates.push({
+    const candidate: SearchCandidate = {
       move: m.san,
       from: m.from,
       to: m.to,
       promotion: m.promotion,
       evaluation: evalScore,
-    });
+      principalVariation: [m.san, ...childPv],
+    };
+    candidates.push(candidate);
 
+    // 顶层也更新 alpha/beta 边界（不剪枝顶层，但收紧子树搜索窗口）
     if (config.useAlphaBeta) {
       if (maximizing) {
         alpha = Math.max(alpha, evalScore);
       } else {
-        // 注意：黑方最小化时，beta 应更新
-        // 但为了收集所有候选的评估值，这里不剪枝顶层
-        // 仅在子树内部剪枝
+        beta = Math.min(beta, evalScore);
       }
     }
   }
@@ -164,22 +182,13 @@ export function searchBestMove(fen: string, config: DifficultyConfig): SearchRes
   const pool = candidates.slice(0, topN);
   let chosen = pool[0];
   if (config.randomness > 0 && pool.length > 1) {
-    // 概率随机选择非最优走法
     if (Math.random() < config.randomness) {
       chosen = pool[Math.floor(Math.random() * pool.length)];
     }
   }
 
-  // 重新计算主路径
-  const pv: string[] = [];
-  // 重新跑一次顶层搜索以获得主路径（简单实现）
-  const pvGame = new Chess(fen);
-  pvGame.move({ from: chosen.from, to: chosen.to, promotion: chosen.promotion });
-  // 用 minimax 继续搜索得到 PV
-  const subPv: string[] = [];
-  minimax(pvGame, Math.max(0, config.depth - 1), -Infinity, Infinity, !maximizing, config.useAlphaBeta, config.useMoveOrdering, subPv);
-  pv.push(chosen.move, ...subPv.slice(0, 5));
-
+  // 直接复用 chosen 的 PV（无需重复搜索）
+  const pv = chosen.principalVariation.slice(0, 6);
   const timeMs = Date.now() - startTime;
 
   return {

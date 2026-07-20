@@ -1,4 +1,5 @@
 // 评估值显示组件
+import { memo } from 'react';
 import { evalToText } from '@/engine/explainer';
 
 interface EvalBarProps {
@@ -8,18 +9,23 @@ interface EvalBarProps {
 }
 
 // 评估条：白方优势在上方
-export default function EvalBar({ evaluation, showText = true, height = 320 }: EvalBarProps) {
+function EvalBar({ evaluation, showText = true, height = 320 }: EvalBarProps) {
   // 将评估值映射到 0-100 的百分比（白方占比）
   const clampedEval = Math.max(-1000, Math.min(1000, evaluation));
   // 使用 tanh 函数平滑映射
   const whitePercent = 50 + (Math.tanh(clampedEval / 400) * 50);
-  const blackPercent = 100 - whitePercent;
 
   return (
     <div className="flex flex-col items-center gap-2">
       <div
         className="w-3 rounded-sm overflow-hidden border border-gold/20 bg-ink-700 relative"
         style={{ height }}
+        role="meter"
+        aria-label="局面评估"
+        aria-valuemin={-1000}
+        aria-valuemax={1000}
+        aria-valuenow={evaluation}
+        aria-valuetext={evalToText(evaluation)}
       >
         {/* 黑方区域（上） */}
         <div className="bg-ink-900 absolute inset-0" />
@@ -37,3 +43,5 @@ export default function EvalBar({ evaluation, showText = true, height = 320 }: E
     </div>
   );
 }
+
+export default memo(EvalBar);

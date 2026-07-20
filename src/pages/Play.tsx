@@ -1,17 +1,19 @@
 // 陪练对战页：AI 对弈 + 最佳走法提示 + 逐步棋理讲解 + 走法路径预览与对比
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Chess } from 'chess.js';
 import ChessBoard from '@/components/board/ChessBoard';
 import MoveHistory from '@/components/board/MoveHistory';
 import EvalBar from '@/components/board/EvalBar';
 import { useAiEngine } from '@/hooks/useAiEngine';
 import { useAppStore } from '@/store/useAppStore';
+import { useConfirm } from '@/components/ConfirmModal';
 import { evalToText, explainPosition } from '@/engine/explainer';
+import { buildHintHighlights, buildHintArrows } from '@/lib/highlights';
 import type { Explanation, SearchCandidate } from '@/types';
 import {
   Crown, Lightbulb, Undo, RotateCw, Flag, Sparkles,
   Brain, Target, TrendingUp, GitBranch, Cpu, Zap, Shield,
-  ChevronRight, Eye,
+  ChevronRight, Eye, AlertTriangle,
 } from 'lucide-react';
 
 const LEVEL_INFO: { range: string; label: string; desc: string }[] = [
@@ -35,7 +37,9 @@ interface GameStatus {
 }
 
 export default function Play() {
-  const gameRef = useRef(new Chess());
+  // 懒初始化：避免每次渲染都执行 new Chess()
+  const gameRef = useRef<Chess | null>(null);
+  if (!gameRef.current) gameRef.current = new Chess();
   const [fen, setFen] = useState(gameRef.current.fen());
   const [moves, setMoves] = useState<string[]>([]);
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
@@ -50,17 +54,21 @@ export default function Play() {
   const [status, setStatus] = useState<GameStatus>({ state: 'playing' });
   const [lastSearchMeta, setLastSearchMeta] = useState<{ depth: number; nodes: number; timeMs: number } | null>(null);
 
-  const { recordGame, addTrainingTime } = useAppStore();
+  const recordGame = useAppStore((s) => s.recordGame);
+  const addTrainingTime = useAppStore((s) => s.addTrainingTime);
+  const confirm = useConfirm();
   const sessionStartRef = useRef(Date.now());
 
-  const { isThinking, search } = useAiEngine({
+  const { isThinking, error: aiError, search } = useAiEngine({
     onResult: (result) => {
       setEvaluation(result.evaluation);
       setCandidates(result.candidates);
       setLastSearchMeta({ depth: result.depth, nodes: result.nodesSearched, timeMs: result.timeMs });
 
-      // 生成棋理讲解
-      const expl = explainPosition(gameRef.current, result.candidates[0]);
+      // 生成棋理讲解（lazy ref 已确保非空）
+      const game = gameRef.current;
+      if (!game) return;
+      const expl = explainPosition(game, result.candidates[0]);
       setExplanation(expl);
     },
   });
@@ -68,6 +76,7 @@ export default function Play() {
   // 应用走子
   const applyMove = useCallback((from: string, to: string, promotion?: string): boolean => {
     const game = gameRef.current;
+    if (!game) return false;
     try {
       const move = game.move({ from, to, promotion });
       if (!move) return false;
@@ -78,7 +87,9 @@ export default function Play() {
       setPvPreview([]);
       setPvPreviewFen(null);
       return true;
-    } catch {
+    } catch (err) {
+      // chess.js 对非法走子抛 Error，记录便于调试但不打扰用户
+      console.warn('[Play] applyMove 失败:', { from, to, promotion }, err);
       return false;
     }
   }, []);
@@ -86,6 +97,7 @@ export default function Play() {
   // 检查游戏结束
   const checkGameEnd = useCallback((): boolean => {
     const game = gameRef.current;
+    if (!game) return false;
     if (game.isCheckmate()) {
       const turn = game.turn();
       // 被将杀的一方是 turn，对方获胜
@@ -109,29 +121,33 @@ export default function Play() {
   // 玩家走子
   const handleDrop = useCallback((sourceSquare: string, targetSquare: string, promotion?: string): boolean => {
     if (status.state !== 'playing') return false;
-    if (gameRef.current.turn() !== 'w') return false; // 仅白方（玩家）走子
+    const game = gameRef.current;
+    if (!game || game.turn() !== 'w') return false; // 仅白方（玩家）走子
     const ok = applyMove(sourceSquare, targetSquare, promotion);
     if (!ok) return false;
-    if (checkGameEnd()) return true;
+    checkGameEnd();
     return true;
   }, [applyMove, checkGameEnd, status.state]);
 
   // AI 自动应招
   useEffect(() => {
+    const game = gameRef.current;
+    if (!game) return;
     if (status.state !== 'playing') return;
-    if (gameRef.current.turn() !== 'b') return;
-    if (gameRef.current.isGameOver()) return;
+    if (game.turn() !== 'b') return;
+    if (game.isGameOver()) return;
 
     let cancelled = false;
-    const fenNow = gameRef.current.fen();
+    const fenNow = game.fen();
     search(fenNow, aiLevel)
       .then((result) => {
         if (cancelled) return;
         applyMove(result.from, result.to, result.promotion);
         checkGameEnd();
       })
-      .catch(() => {
-        // 取消或失败，忽略
+      .catch((err) => {
+        // 仅记录日志，错误状态由 useAiError 暴露给 UI
+        if (!cancelled) console.warn('[Play] AI 应招失败:', err);
       });
 
     return () => { cancelled = true; };
@@ -141,33 +157,44 @@ export default function Play() {
   // 提示
   const handleHint = useCallback(() => {
     if (status.state !== 'playing') return;
-    const fenNow = gameRef.current.fen();
+    const game = gameRef.current;
+    if (!game) return;
+    const fenNow = game.fen();
     search(fenNow, Math.max(aiLevel, 5))
       .then((result) => {
         setHintMove({ from: result.from, to: result.to });
         setEvaluation(result.evaluation);
         setCandidates(result.candidates);
         setLastSearchMeta({ depth: result.depth, nodes: result.nodesSearched, timeMs: result.timeMs });
-        const expl = explainPosition(gameRef.current, result.candidates[0]);
+        const g = gameRef.current;
+        if (!g) return;
+        const expl = explainPosition(g, result.candidates[0]);
         setExplanation(expl);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn('[Play] 求提示失败:', err);
+      });
   }, [aiLevel, search, status.state]);
 
   // 撤销（撤回玩家与AI各一步）
+  // 仅在游戏进行中允许，避免终局悔棋导致胜负记录失真
   const handleUndo = useCallback(() => {
+    if (status.state !== 'playing') return;
     const game = gameRef.current;
+    if (!game) return;
+    // 撤回两步（玩家+AI），不足两步则不操作
+    if (game.history().length < 2) return;
     game.undo();
     game.undo();
     setFen(game.fen());
     setMoves(game.history({ verbose: true }).map((m) => m.san));
-    setStatus({ state: 'playing' });
     setHintMove(null);
     setCandidates([]);
     setExplanation(null);
     setPvPreview([]);
     setPvPreviewFen(null);
-  }, []);
+    setSelectedCandidateIdx(null);
+  }, [status.state]);
 
   // 新局
   const handleNewGame = useCallback(() => {
@@ -185,33 +212,46 @@ export default function Play() {
   }, []);
 
   // 认输
-  const handleResign = useCallback(() => {
+  const handleResign = useCallback(async () => {
     if (status.state !== 'playing') return;
-    if (!confirm('确认认输？')) return;
+    const ok = await confirm({
+      title: '确认认输？',
+      message: '本局将记为负，对局结束。',
+      confirmText: '认输',
+      danger: true,
+    });
+    if (!ok) return;
     setStatus({ state: 'resigned', winner: 'b', reason: '玩家认输' });
     recordGame('loss');
-  }, [recordGame, status.state]);
+  }, [recordGame, status.state, confirm]);
 
   // 翻转棋盘
   const handleFlip = useCallback(() => {
     setOrientation((o) => (o === 'white' ? 'black' : 'white'));
   }, []);
 
-  // 选中候选走法 → 预览主路径
+  // 选中候选走法 → 预览主路径（PV）
+  // 使用 SearchCandidate.principalVariation 真实推演多步
   const handleSelectCandidate = useCallback((idx: number) => {
     setSelectedCandidateIdx(idx);
     const c = candidates[idx];
     if (!c) return;
-    // 在副本上推演前几步
-    const previewGame = new Chess(gameRef.current.fen());
-    const pvMoves: string[] = [c.move];
-    try {
-      previewGame.move({ from: c.from, to: c.to, promotion: c.promotion });
-      setPvPreviewFen(previewGame.fen());
-    } catch {
-      setPvPreviewFen(null);
+    const current = gameRef.current;
+    if (!current) return;
+    // 在副本上推演完整 PV，最终停在 PV 末端的局面
+    const previewGame = new Chess(current.fen());
+    // 取 PV 前 6 步用于预览（避免过长）
+    const pvSteps = c.principalVariation.slice(0, 6);
+    // 尝试逐步应用 SAN，遇到非法则停在当前
+    for (const san of pvSteps) {
+      try {
+        previewGame.move(san);
+      } catch {
+        break;
+      }
     }
-    setPvPreview(pvMoves);
+    setPvPreviewFen(previewGame.fen());
+    setPvPreview(pvSteps);
   }, [candidates]);
 
   // 离开页面时累计训练时长
@@ -222,22 +262,20 @@ export default function Play() {
     };
   }, [addTrainingTime]);
 
-  const turn = gameRef.current.turn();
+  // 从 fen 推导当前轮次（避免渲染期读 ref 导致与状态不同步）
+  // FEN 第 2 字段为 'w' 或 'b'
+  const turn: 'w' | 'b' = fen.split(' ')[1] === 'b' ? 'b' : 'w';
   const isPlayerTurn = turn === 'w' && status.state === 'playing';
   const levelInfo = LEVEL_INFO.find((l) => {
     const [lo, hi] = l.range.split('-').map(Number);
     return aiLevel >= lo && aiLevel <= hi;
   }) ?? LEVEL_INFO[0];
 
-  const highlightedSquares: { square: string; color: string }[] = [];
-  if (hintMove) {
-    highlightedSquares.push({ square: hintMove.from, color: 'rgba(212,165,116,0.35)' });
-    highlightedSquares.push({ square: hintMove.to, color: 'rgba(212,165,116,0.55)' });
-  }
-  const arrowHints = hintMove ? [{ from: hintMove.from, to: hintMove.to, color: 'rgba(212,165,116,0.85)' }] : [];
+  const highlightedSquares = useMemo(() => buildHintHighlights(hintMove), [hintMove]);
+  const arrowHints = useMemo(() => buildHintArrows(hintMove), [hintMove]);
 
   return (
-    <div className="px-10 py-8 max-w-[1600px] mx-auto">
+    <div className="px-4 md:px-10 py-8 max-w-[1600px] mx-auto">
       {/* 顶部标题栏 */}
       <header className="mb-8 flex items-end justify-between">
         <div>
@@ -273,7 +311,7 @@ export default function Play() {
                 orientation={orientation}
                 highlightedSquares={highlightedSquares}
                 arrowHints={arrowHints}
-                arePiecesDraggable={isPlayerTurn && !isThinking}
+                arePiecesDraggable={isPlayerTurn && !isThinking && !pvPreviewFen}
               />
               {pvPreviewFen && (
                 <div className="mt-2 flex items-center justify-between text-xs px-2">
@@ -297,7 +335,7 @@ export default function Play() {
               <button onClick={handleNewGame} className="btn-gold-solid px-4 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center gap-1.5">
                 <Crown size={12} /> 新局
               </button>
-              <button onClick={handleUndo} disabled={moves.length < 2 || isThinking} className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+              <button onClick={handleUndo} disabled={moves.length < 2 || isThinking || status.state !== 'playing'} className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
                 <Undo size={12} /> 悔棋
               </button>
               <button onClick={handleFlip} className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center gap-1.5">
@@ -311,6 +349,17 @@ export default function Play() {
                 <span>{isThinking ? 'AI 计算中…' : 'AI 待命'}</span>
               </div>
             </div>
+
+            {/* AI 错误提示 */}
+            {aiError && (
+              <div
+                className="mt-3 px-3 py-2 rounded-sm border border-wine/40 bg-wine/10 text-xs text-wine flex items-center gap-2"
+                role="alert"
+              >
+                <AlertTriangle size={12} className="shrink-0" />
+                <span>AI 计算失败：{aiError}</span>
+              </div>
+            )}
 
             {/* 难度滑块 */}
             <div className="mt-4 pt-4 border-t border-gold/10">
@@ -331,6 +380,8 @@ export default function Play() {
                 max={10}
                 value={aiLevel}
                 onChange={(e) => setAiLevel(Number(e.target.value))}
+                aria-label="AI 难度"
+                aria-valuetext={`${aiLevel} - ${levelInfo.label}`}
                 className="w-full accent-[#D4A574]"
               />
               <div className="flex justify-between mt-1 text-[9px] uppercase tracking-widest text-ivoryDim/60">
@@ -349,7 +400,7 @@ export default function Play() {
                   <div className="text-[9px] uppercase tracking-widest text-ivoryDim">搜索深度</div>
                 </div>
                 <div>
-                  <div className="font-mono text-sm text-gold">{lastSearchMeta.nodes.toLocaleString()}</div>
+                  <div className="font-mono text-sm text-gold">{lastSearchMeta.nodes.toLocaleString('en-US')}</div>
                   <div className="text-[9px] uppercase tracking-widest text-ivoryDim">节点数</div>
                 </div>
                 <div>
@@ -385,7 +436,6 @@ export default function Play() {
           <MoveHistory
             moves={moves}
             currentIndex={moves.length - 1}
-            onMoveClick={() => {}}
           />
 
           {/* 提示与讲解 */}

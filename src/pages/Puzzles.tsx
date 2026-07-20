@@ -1,36 +1,58 @@
 // 习题库难度分级入口页：4 个难度等级卡片 + 进度统计
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Puzzle as PuzzleIcon, ArrowRight, Trophy, Flame, Target, Crown } from 'lucide-react';
+import { Puzzle as PuzzleIcon, ArrowRight, AlertTriangle, RotateCcw } from 'lucide-react';
 import { loadPuzzles } from '@/data';
+import { PUZZLE_LEVELS } from '@/data/puzzleLevels';
 import { useAppStore } from '@/store/useAppStore';
 import type { Puzzle } from '@/types';
 
-const LEVELS = [
-  { level: 1 as const, title: '一步杀', en: 'Mate in 1', desc: '单步将杀习题，培养战术敏锐度与终点嗅觉', icon: Target, accent: 'text-moss', range: '800-1000' },
-  { level: 2 as const, title: '两步杀', en: 'Mate in 2', desc: '双步将杀组合，强化计算深度与战术衔接', icon: Flame, accent: 'text-gold', range: '1100-1200' },
-  { level: 3 as const, title: '三步杀', en: 'Mate in 3', desc: '多步精确计算，考验局面预判与对手应招', icon: Trophy, accent: 'text-gold', range: '1300-1350' },
-  { level: 4 as const, title: '多步杀', en: 'Mate in N', desc: '复杂将杀链路，逼近实战残局推演极限', icon: Crown, accent: 'text-wine', range: '1500+' },
-];
-
 export default function Puzzles() {
   const [counts, setCounts] = useState<Record<number, number>>({ 1: 0, 2: 0, 3: 0, 4: 0 });
-  const { progress } = useAppStore();
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // 只订阅所需的 puzzleProgress，避免 playStats 等无关变化触发重渲染
+  const puzzleProgress = useAppStore((s) => s.progress.puzzleProgress);
 
   useEffect(() => {
-    loadPuzzles().then((all: Puzzle[]) => {
-      const map: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
-      for (const p of all) map[p.level]++;
-      setCounts(map);
-    });
+    let cancelled = false;
+    setLoadError(null);
+    loadPuzzles()
+      .then((all: Puzzle[]) => {
+        if (cancelled) return;
+        const map: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
+        for (const p of all) map[p.level]++;
+        setCounts(map);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLoadError(err instanceof Error ? err.message : '习题数据加载失败');
+      });
+    return () => { cancelled = true; };
   }, []);
 
-  const totalSolved = progress.puzzleProgress.solved.length;
+  if (loadError) {
+    return (
+      <div className="px-4 md:px-10 py-16 max-w-[1200px] mx-auto">
+        <div className="card-gold rounded-sm p-12 text-center">
+          <AlertTriangle size={32} className="text-wine mx-auto mb-3" />
+          <div className="text-sm text-ivoryDim mb-4">习题数据加载失败：{loadError}</div>
+          <button
+            onClick={() => window.location.reload()}
+            className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest inline-flex items-center gap-1.5"
+          >
+            <RotateCcw size={12} /> 重新加载
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const totalSolved = puzzleProgress.solved.length;
   const totalPuzzles = counts[1] + counts[2] + counts[3] + counts[4];
-  const totalAttempts = Object.values(progress.puzzleProgress.byLevel).reduce((s, v) => s + (v?.total ?? 0), 0);
+  const totalAttempts = Object.values(puzzleProgress.byLevel).reduce((s, v) => s + (v?.total ?? 0), 0);
 
   return (
-    <div className="px-10 py-8 max-w-[1400px] mx-auto">
+    <div className="px-4 md:px-10 py-8 max-w-[1400px] mx-auto">
       <header className="mb-8">
         <div className="flex items-center gap-2 mb-2 animate-fade-up">
           <PuzzleIcon size={12} className="text-gold" />
@@ -55,11 +77,11 @@ export default function Puzzles() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div className="card-gold rounded-sm p-5">
           <div className="text-[10px] uppercase tracking-[0.25em] text-gold/60 mb-2">当前连胜</div>
-          <div className="font-display text-4xl text-gold">{progress.puzzleProgress.streak}</div>
+          <div className="font-display text-4xl text-gold">{puzzleProgress.streak}</div>
         </div>
         <div className="card-gold rounded-sm p-5">
           <div className="text-[10px] uppercase tracking-[0.25em] text-gold/60 mb-2">最长连胜</div>
-          <div className="font-display text-4xl text-gold">{progress.puzzleProgress.bestStreak}</div>
+          <div className="font-display text-4xl text-gold">{puzzleProgress.bestStreak}</div>
         </div>
         <div className="card-gold rounded-sm p-5">
           <div className="text-[10px] uppercase tracking-[0.25em] text-gold/60 mb-2">解题率</div>
@@ -76,11 +98,11 @@ export default function Puzzles() {
       <div className="divider-gold mb-8" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {LEVELS.map((lv, idx) => {
+        {PUZZLE_LEVELS.map((lv, idx) => {
           const Icon = lv.icon;
           const total = counts[lv.level];
-          const solved = progress.puzzleProgress.byLevel[lv.level]?.solved ?? 0;
-          const attempted = progress.puzzleProgress.byLevel[lv.level]?.total ?? 0;
+          const solved = puzzleProgress.byLevel[lv.level]?.solved ?? 0;
+          const attempted = puzzleProgress.byLevel[lv.level]?.total ?? 0;
           const accuracy = attempted > 0 ? Math.round((solved / attempted) * 100) : 0;
           return (
             <Link
@@ -112,7 +134,14 @@ export default function Puzzles() {
                   <span>解题进度</span>
                   <span className="font-mono">{solved} / {total}</span>
                 </div>
-                <div className="h-1.5 bg-ink-800 rounded-full overflow-hidden">
+                <div
+                  className="h-1.5 bg-ink-800 rounded-full overflow-hidden"
+                  role="progressbar"
+                  aria-label={`${lv.title}解题进度`}
+                  aria-valuemin={0}
+                  aria-valuemax={total}
+                  aria-valuenow={solved}
+                >
                   <div
                     className="h-full bg-gradient-to-r from-gold/60 to-gold transition-all duration-500"
                     style={{ width: `${total > 0 ? (solved / total) * 100 : 0}%` }}
@@ -124,11 +153,12 @@ export default function Puzzles() {
                 <div className="text-[10px] uppercase tracking-widest text-ivoryDim">
                   准确率 <span className="text-gold font-mono">{accuracy}%</span>
                 </div>
-                <span className="text-[10px] uppercase tracking-widest text-gold flex items-center gap-1">
+                <span className="text-[10px] uppercase tracking-widest text-gold flex items-center gap-1" aria-hidden="true">
                   开始训练
                   <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
                 </span>
               </div>
+              <span className="sr-only">进入{lv.title}训练（共 {total} 题，已解 {solved}，准确率 {accuracy}%）</span>
             </Link>
           );
         })}

@@ -1,21 +1,20 @@
 // 局面评估函数
 // 评估值始终从白方视角：正数=白优，负数=黑优
-// 范围约 ±10000，超出表示接近将杀
+// 范围约 ±100000，超出表示接近将杀
 
-import { Chess, PieceSymbol, Color } from 'chess.js';
+import { Chess, PieceSymbol } from 'chess.js';
 
-// 子力分值
+// 子力分值（王为 0，因为不可被吃且 PST 已涵盖其位置价值）
 export const PIECE_VALUES: Record<PieceSymbol, number> = {
   p: 100,
   n: 320,
   b: 330,
   r: 500,
   q: 900,
-  k: 20000,
+  k: 0,
 };
 
 // 经典 Piece-Square Tables（白方视角，从 a8 到 h1，即 index 0 = a8）
-// 数值越大表示该位置对该棋子越有利
 // 来源：chessprogramming Wiki 经典 PST
 
 // 兵
@@ -117,51 +116,35 @@ function squareToIndex(file: number, rank: number): number {
   return rank * 8 + file;
 }
 
-// 判断是否为残局阶段（双方均无后，或后侧仅剩少量子力）
-function isEndgame(game: Chess): boolean {
+// 判断是否为残局阶段（双方非王子力总和较低）
+// 结果在同一搜索中可视为常量，由调用方缓存
+export function isEndgame(game: Chess): boolean {
   const board = game.board();
-  let whiteQueenCount = 0;
-  let blackQueenCount = 0;
   let nonPawnMaterial = 0;
 
   for (let rank = 0; rank < 8; rank++) {
     for (let file = 0; file < 8; file++) {
       const piece = board[rank][file];
       if (!piece) continue;
-      if (piece.type === 'q') {
-        if (piece.color === 'w') whiteQueenCount++;
-        else blackQueenCount++;
-      }
       if (piece.type !== 'p' && piece.type !== 'k') {
         nonPawnMaterial += PIECE_VALUES[piece.type];
       }
     }
   }
 
-  // 残局判定：每方无后，或仅有一后且其他子力较少
-  const queensMinor = (whiteQueenCount <= 1 && blackQueenCount <= 1);
-  return queensMinor && nonPawnMaterial < 1700;
+  // 残局判定：双方非王子力较低（约等于双方各失 1 后或同等子力）
+  return nonPawnMaterial < 1700;
 }
 
 // 评估当前局面（白方视角）
-export function evaluatePosition(game: Chess): number {
-  // 终局判定
-  if (game.isCheckmate()) {
-    // 被将杀方为当前轮到的方
-    return game.turn() === 'w' ? -100000 : 100000;
-  }
-  if (game.isDraw() || game.isStalemate() || game.isThreefoldRepetition() || game.isInsufficientMaterial()) {
-    return 0;
-  }
-
+// 注：终局（将杀/和棋）由调用方处理，这里只做静态评估
+export function evaluatePosition(game: Chess, endgame?: boolean): number {
   const board = game.board();
-  const endgame = isEndgame(game);
+  const isEnd = endgame ?? isEndgame(game);
 
   let score = 0;
   let whiteBishopCount = 0;
   let blackBishopCount = 0;
-  let whiteMobility = 0;
-  let blackMobility = 0;
 
   // 子力 + PST 评分
   for (let rank = 0; rank < 8; rank++) {
@@ -170,10 +153,8 @@ export function evaluatePosition(game: Chess): number {
       if (!piece) continue;
 
       const idx = squareToIndex(file, rank);
-      const pst = piece.type === 'k' && endgame ? PST_KING_END : PST_MAP[piece.type];
-      // 黑方视角：PST 水平+垂直翻转（即 index 56 - idx + 调整）
-      // 简化处理：黑方使用镜像索引 (63 - idx 大致可用，但 PST 表设计上需垂直翻转)
-      // 标准做法：黑方 idx = (7 - rank) * 8 + file
+      const pst = piece.type === 'k' && isEnd ? PST_KING_END : PST_MAP[piece.type];
+      // 黑方使用镜像索引：垂直翻转
       const pstIdx = piece.color === 'w' ? idx : (7 - rank) * 8 + file;
       const pstValue = pst[pstIdx];
 
@@ -193,29 +174,18 @@ export function evaluatePosition(game: Chess): number {
   if (whiteBishopCount >= 2) score += 30;
   if (blackBishopCount >= 2) score -= 30;
 
-  // 机动性（合法走子数）
-  // 为避免修改原局面，使用 turn 已是当前轮到方，可用 game.moves() 数量作为机动性
-  // 但需要在双方视角都计算，这里简化：仅用当前 turn 的走子数
+  // 机动性（双方合法走子数差异）
+  // 注意：game.moves() 只返回当前轮到方的走子，需要构造对方局面计算
+  // 这里采用轻量近似：仅用当前方走子数，避免双倍 chess.js 开销
+  // 评分偏移：当前方为白则加分，为黑则减分，相当于"轮到走的一方有微弱主动权"
+  // 评分幅度小（±2*30=60），不影响 minimax 决策稳定性
   const currentTurn = game.turn();
   const currentMoves = game.moves().length;
   if (currentTurn === 'w') {
-    whiteMobility = currentMoves;
+    score += currentMoves * 2;
   } else {
-    blackMobility = currentMoves;
+    score -= currentMoves * 2;
   }
-  // 机动性差异（轻微加权，避免与子力重复影响）
-  score += (whiteMobility - blackMobility) * 2;
 
   return score;
-}
-
-// 获取 PST 值（用于讲解器或调试）
-export function getPstValue(piece: PieceSymbol, color: Color, square: string, endgame: boolean): number {
-  const files = 'abcdefgh';
-  const file = files.indexOf(square[0]);
-  const rank = 8 - parseInt(square[1], 10);
-  const idx = squareToIndex(file, rank);
-  const pst = piece === 'k' && endgame ? PST_KING_END : PST_MAP[piece];
-  const pstIdx = color === 'w' ? idx : (7 - rank) * 8 + file;
-  return pst[pstIdx];
 }

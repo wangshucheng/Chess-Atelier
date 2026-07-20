@@ -1,7 +1,9 @@
 // 左侧栏导航
 import { NavLink } from 'react-router-dom';
 import { Home, Swords, BookOpen, Puzzle, Reply, RotateCcw } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/store/useAppStore';
+import { useConfirm } from '@/components/ConfirmModal';
 
 const navItems = [
   { to: '/', label: '首页', labelEn: 'Atelier', icon: Home },
@@ -11,14 +13,32 @@ const navItems = [
   { to: '/review', label: '棋局复盘', labelEn: 'Review', icon: Reply },
 ];
 
-export default function Sidebar() {
-  const { progress, resetAllProgress } = useAppStore();
+interface SidebarProps {
+  onNavigate?: () => void;
+}
+
+export default function Sidebar({ onNavigate }: SidebarProps = {}) {
+  // 浅比较订阅 progress + resetAllProgress，其他状态变更不会触发重渲染
+  const { progress, resetAllProgress } = useAppStore(
+    useShallow((s) => ({ progress: s.progress, resetAllProgress: s.resetAllProgress })),
+  );
+  const confirm = useConfirm();
   const winRate = progress.playStats.totalGames > 0
     ? Math.round((progress.playStats.wins / progress.playStats.totalGames) * 100)
     : 0;
 
+  const handleReset = async () => {
+    const ok = await confirm({
+      title: '重置所有训练进度？',
+      message: '此操作不可撤销，将清空所有对局记录、习题进度与开局练习记录。',
+      confirmText: '重置',
+      danger: true,
+    });
+    if (ok) resetAllProgress();
+  };
+
   return (
-    <aside className="w-64 shrink-0 border-r border-gold/15 bg-ink-900/60 backdrop-blur-md flex flex-col h-screen sticky top-0">
+    <aside className="w-64 shrink-0 border-r border-gold/15 bg-ink-900/95 backdrop-blur-md flex flex-col h-screen">
       {/* 品牌 */}
       <div className="px-6 py-8 border-b border-gold/10">
         <div className="flex items-center gap-3">
@@ -33,7 +53,7 @@ export default function Sidebar() {
       </div>
 
       {/* 导航 */}
-      <nav className="flex-1 py-6 px-3 space-y-1">
+      <nav aria-label="主导航" className="flex-1 py-6 px-3 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -41,6 +61,7 @@ export default function Sidebar() {
               key={item.to}
               to={item.to}
               end={item.to === '/'}
+              onClick={onNavigate}
               className={({ isActive }) =>
                 `group flex items-center gap-3 px-3 py-2.5 rounded-sm transition-all duration-200 ${
                   isActive
@@ -79,11 +100,7 @@ export default function Sidebar() {
           </div>
         </div>
         <button
-          onClick={() => {
-            if (confirm('确定要重置所有训练进度吗？此操作不可撤销。')) {
-              resetAllProgress();
-            }
-          }}
+          onClick={handleReset}
           className="w-full mt-2 flex items-center justify-center gap-1.5 text-[10px] uppercase tracking-widest text-ivoryDim/60 hover:text-wine transition-colors py-1.5"
         >
           <RotateCcw size={10} />

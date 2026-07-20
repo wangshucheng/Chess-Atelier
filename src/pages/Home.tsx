@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import { Swords, BookOpen, Puzzle, Reply, ArrowRight, Sparkles, Crown } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
+// 仅订阅 progress 字段，避免其他状态变更（如侧栏折叠）触发重渲染
+const useProgress = () => useAppStore((s) => s.progress);
+
 const modes = [
   {
     to: '/play',
@@ -39,7 +42,7 @@ const modes = [
 ];
 
 export default function Home() {
-  const { progress } = useAppStore();
+  const progress = useProgress();
   const winRate = progress.playStats.totalGames > 0
     ? Math.round((progress.playStats.wins / progress.playStats.totalGames) * 100)
     : 0;
@@ -50,7 +53,7 @@ export default function Home() {
   return (
     <div className="relative">
       {/* Hero */}
-      <section className="relative px-12 pt-24 pb-32 overflow-hidden">
+      <section className="relative px-4 md:px-12 pt-16 md:pt-24 pb-20 md:pb-32 overflow-hidden">
         {/* 装饰：左上角棋子符号 */}
         <div className="absolute top-12 right-12 text-[200px] font-display text-gold/5 leading-none select-none pointer-events-none">
           ♛
@@ -67,7 +70,7 @@ export default function Home() {
             </span>
           </div>
 
-          <h1 className="font-display text-7xl md:text-8xl text-ivory leading-[0.95] tracking-tight-display mb-8 animate-letter-tighten">
+          <h1 className="font-display text-5xl sm:text-7xl md:text-8xl text-ivory leading-[0.95] tracking-tight-display mb-8 animate-letter-tighten">
             一座<span className="text-gold italic">棋手</span>的
             <br />
             私人书房。
@@ -97,10 +100,10 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="divider-gold mx-12" />
+      <div className="divider-gold mx-4 md:mx-12" />
 
       {/* 训练模式卡片 */}
-      <section className="px-12 py-16">
+      <section className="px-4 md:px-12 py-10 md:py-16">
         <div className="flex items-baseline justify-between mb-10">
           <div>
             <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-2">Training Modes</div>
@@ -138,10 +141,10 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="divider-gold mx-12" />
+      <div className="divider-gold mx-4 md:mx-12" />
 
       {/* 数据看板 */}
-      <section className="px-12 py-16">
+      <section className="px-4 md:px-12 py-10 md:py-16">
         <div className="flex items-baseline justify-between mb-10">
           <div>
             <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-2">Your Atelier</div>
@@ -184,7 +187,7 @@ export default function Home() {
       </section>
 
       {/* 底部签名 */}
-      <footer className="px-12 py-10 border-t border-gold/10">
+      <footer className="px-4 md:px-12 py-10 border-t border-gold/10">
         <div className="flex items-center justify-between text-xs text-ivoryDim/60">
           <div className="flex items-center gap-2">
             <span className="font-display text-gold">♞</span>

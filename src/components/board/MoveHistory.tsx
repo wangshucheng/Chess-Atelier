@@ -1,4 +1,5 @@
 // 走棋历史侧栏：双列（白/黑）走子表
+import { useMemo, memo, type KeyboardEvent } from 'react';
 import { History } from 'lucide-react';
 
 interface MoveHistoryProps {
@@ -8,18 +9,42 @@ interface MoveHistoryProps {
   className?: string;
 }
 
-export default function MoveHistory({ moves, currentIndex, onMoveClick, className = '' }: MoveHistoryProps) {
-  // 配对：白黑走子
-  const rows: { no: number; white?: string; black?: string; whiteIdx?: number; blackIdx?: number }[] = [];
-  for (let i = 0; i < moves.length; i += 2) {
-    rows.push({
-      no: i / 2 + 1,
-      white: moves[i],
-      black: moves[i + 1],
-      whiteIdx: i,
-      blackIdx: i + 1 < moves.length ? i + 1 : undefined,
-    });
+interface Row {
+  no: number;
+  white?: string;
+  black?: string;
+  whiteIdx?: number;
+  blackIdx?: number;
+}
+
+// 键盘激活走子（Enter / Space）
+function handleCellKey(
+  e: KeyboardEvent<HTMLTableCellElement>,
+  idx: number | undefined,
+  onMoveClick?: (i: number) => void,
+) {
+  if (!onMoveClick || idx === undefined) return;
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    onMoveClick(idx);
   }
+}
+
+function MoveHistory({ moves, currentIndex, onMoveClick, className = '' }: MoveHistoryProps) {
+  // 配对：白黑走子，仅依赖 moves 重新计算
+  const rows = useMemo<Row[]>(() => {
+    const list: Row[] = [];
+    for (let i = 0; i < moves.length; i += 2) {
+      list.push({
+        no: i / 2 + 1,
+        white: moves[i],
+        black: moves[i + 1],
+        whiteIdx: i,
+        blackIdx: i + 1 < moves.length ? i + 1 : undefined,
+      });
+    }
+    return list;
+  }, [moves]);
 
   return (
     <div className={`card-gold rounded-sm ${className}`}>
@@ -34,27 +59,41 @@ export default function MoveHistory({ moves, currentIndex, onMoveClick, classNam
         ) : (
           <table className="w-full text-sm font-mono">
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.no} className="border-b border-gold/5 last:border-0">
-                  <td className="px-3 py-1.5 text-[10px] text-ivoryDim/60 w-8 text-right">{r.no}.</td>
-                  <td
-                    className={`px-2 py-1.5 cursor-pointer transition-colors ${
-                      currentIndex === r.whiteIdx ? 'bg-gold/20 text-ivory' : 'text-ivory/80 hover:bg-gold/10'
-                    }`}
-                    onClick={() => r.whiteIdx !== undefined && onMoveClick?.(r.whiteIdx)}
-                  >
-                    {r.white || ''}
-                  </td>
-                  <td
-                    className={`px-2 py-1.5 cursor-pointer transition-colors ${
-                      currentIndex === r.blackIdx ? 'bg-gold/20 text-ivory' : 'text-ivory/80 hover:bg-gold/10'
-                    }`}
-                    onClick={() => r.blackIdx !== undefined && onMoveClick?.(r.blackIdx)}
-                  >
-                    {r.black || ''}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const wClickable = onMoveClick && r.whiteIdx !== undefined;
+                const bClickable = onMoveClick && r.blackIdx !== undefined;
+                return (
+                  <tr key={r.no} className="border-b border-gold/5 last:border-0">
+                    <td className="px-3 py-1.5 text-[10px] text-ivoryDim/60 w-8 text-right">{r.no}.</td>
+                    <td
+                      className={`px-2 py-1.5 transition-colors ${wClickable ? 'cursor-pointer' : ''} ${
+                        currentIndex === r.whiteIdx ? 'bg-gold/20 text-ivory' : 'text-ivory/80 hover:bg-gold/10'
+                      }`}
+                      onClick={() => r.whiteIdx !== undefined && onMoveClick?.(r.whiteIdx)}
+                      onKeyDown={(e) => handleCellKey(e, r.whiteIdx, onMoveClick)}
+                      role={wClickable ? 'button' : undefined}
+                      tabIndex={wClickable ? 0 : undefined}
+                      aria-label={r.white ? `第 ${r.no} 手白方走 ${r.white}` : undefined}
+                      aria-current={currentIndex === r.whiteIdx ? 'true' : undefined}
+                    >
+                      {r.white || ''}
+                    </td>
+                    <td
+                      className={`px-2 py-1.5 transition-colors ${bClickable ? 'cursor-pointer' : ''} ${
+                        currentIndex === r.blackIdx ? 'bg-gold/20 text-ivory' : 'text-ivory/80 hover:bg-gold/10'
+                      }`}
+                      onClick={() => r.blackIdx !== undefined && onMoveClick?.(r.blackIdx)}
+                      onKeyDown={(e) => handleCellKey(e, r.blackIdx, onMoveClick)}
+                      role={bClickable ? 'button' : undefined}
+                      tabIndex={bClickable ? 0 : undefined}
+                      aria-label={r.black ? `第 ${r.no} 手黑方走 ${r.black}` : undefined}
+                      aria-current={currentIndex === r.blackIdx ? 'true' : undefined}
+                    >
+                      {r.black || ''}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -62,3 +101,5 @@ export default function MoveHistory({ moves, currentIndex, onMoveClick, classNam
     </div>
   );
 }
+
+export default memo(MoveHistory);

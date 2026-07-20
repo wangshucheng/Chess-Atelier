@@ -1,6 +1,8 @@
 // 棋盘组件：封装 react-chessboard，统一主题与交互
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, memo } from 'react';
 import { Chessboard } from 'react-chessboard';
+// 库主入口未导出 Square/Arrow 类型，从子路径导入
+import type { Arrow, Square } from 'react-chessboard/dist/chessboard/types';
 
 interface ChessBoardProps {
   fen: string;
@@ -12,7 +14,23 @@ interface ChessBoardProps {
   boardWidth?: number;
 }
 
-export default function ChessBoard({
+// 模块级常量：避免每次渲染创建新对象触发 react-chessboard 内部 memo 失效
+// react-chessboard 的样式 props 类型为 Record<string, string | number> 或 Record<string, string>
+const DEFAULT_ARROW_COLOR = 'rgba(212,165,116,0.7)';
+const BOARD_STYLE: Record<string, string | number> = {
+  borderRadius: '2px',
+  boxShadow: '0 20px 60px -20px rgba(0,0,0,0.8), 0 0 0 1px rgba(212,165,116,0.3)',
+};
+const DARK_SQUARE_STYLE: Record<string, string> = { backgroundColor: '#7D5A3C' };
+const LIGHT_SQUARE_STYLE: Record<string, string> = { backgroundColor: '#E8D5B0' };
+const NOTATION_STYLE: Record<string, string | number> = {
+  color: '#D4A574',
+  fontFamily: '"JetBrains Mono", monospace',
+  fontSize: '10px',
+};
+const HIGHLIGHT_BORDER = 'rgba(212,165,116,0.6)';
+
+function ChessBoard({
   fen,
   onDrop,
   orientation = 'white',
@@ -48,54 +66,59 @@ export default function ChessBoard({
   const resolvedWidth = boardWidth ?? (containerWidth > 0 ? containerWidth : 480);
 
   // 高亮方格样式
-  const customSquareStyles = useMemo(() => {
-    const styles: Record<string, React.CSSProperties> = {};
+  const customSquareStyles = useMemo<Record<string, Record<string, string>>>(() => {
+    const styles: Record<string, Record<string, string>> = {};
     for (const h of highlightedSquares) {
       styles[h.square] = {
         background: h.color,
-        boxShadow: 'inset 0 0 0 3px rgba(212,165,116,0.6)',
+        boxShadow: `inset 0 0 0 3px ${HIGHLIGHT_BORDER}`,
       };
     }
     return styles;
   }, [highlightedSquares]);
 
-  // 自定义箭头（react-chessboard 要求 Arrow = [Square, Square, string?]，其中 Square 为联合类型）
-  const customArrows = useMemo(() => {
-    return arrowHints.map((a) => [a.from, a.to, a.color || 'rgba(212,165,116,0.7)'] as unknown as [never, never, string]);
+  // 自定义箭头：react-chessboard 要求 Arrow = [Square, Square, string?]
+  const customArrows = useMemo<Arrow[]>(() => {
+    return arrowHints.map((a) => [
+      a.from as Square,
+      a.to as Square,
+      a.color || DEFAULT_ARROW_COLOR,
+    ]);
   }, [arrowHints]);
+
+  // 稳定引用：避免每次渲染都生成新函数破坏 react-chessboard 内部 memo
+  const handlePieceDrop = useCallback(
+    (sourceSquare: string, targetSquare: string, piece: string): boolean => {
+      if (!onDrop) return false;
+      // 检测是否需要升变（兵到对方底线）
+      // chess.js piece 标识格式：'wP'/'bP'
+      const isPawn = piece.length >= 2 && piece[1] === 'P';
+      const targetRank = parseInt(targetSquare[1], 10);
+      const needsPromotion = isPawn && (targetRank === 1 || targetRank === 8);
+      // 默认升变为后
+      return onDrop(sourceSquare, targetSquare, needsPromotion ? 'q' : undefined);
+    },
+    [onDrop],
+  );
 
   return (
     <div className="relative w-full flex justify-center" ref={wrapperRef}>
       <div className="absolute -inset-2 border border-gold/20 rounded-sm pointer-events-none" />
       <Chessboard
         position={fen}
-        onPieceDrop={(sourceSquare, targetSquare, piece) => {
-          if (!onDrop) return false;
-          // 检测是否需要升变（兵到对方底线）
-          const isPawn = piece.toLowerCase().includes('p');
-          const targetRank = parseInt(targetSquare[1], 10);
-          const needsPromotion = isPawn && (targetRank === 8 || targetRank === 0);
-          // 默认升变为后
-          return onDrop(sourceSquare, targetSquare, needsPromotion ? 'q' : undefined);
-        }}
+        onPieceDrop={handlePieceDrop}
         boardOrientation={orientation}
         arePiecesDraggable={arePiecesDraggable}
         boardWidth={resolvedWidth}
-        customBoardStyle={{
-          borderRadius: '2px',
-          boxShadow: '0 20px 60px -20px rgba(0,0,0,0.8), 0 0 0 1px rgba(212,165,116,0.3)',
-        }}
-        customDarkSquareStyle={{ backgroundColor: '#7D5A3C' }}
-        customLightSquareStyle={{ backgroundColor: '#E8D5B0' }}
+        customBoardStyle={BOARD_STYLE}
+        customDarkSquareStyle={DARK_SQUARE_STYLE}
+        customLightSquareStyle={LIGHT_SQUARE_STYLE}
         customSquareStyles={customSquareStyles}
         customArrows={customArrows}
-        customNotationStyle={{
-          color: '#D4A574',
-          fontFamily: '"JetBrains Mono", monospace',
-          fontSize: '10px',
-        }}
-        customPieces={undefined}
+        customNotationStyle={NOTATION_STYLE}
       />
     </div>
   );
 }
+
+export default memo(ChessBoard);

@@ -2,13 +2,16 @@
 
 import { Chess } from 'chess.js';
 import { evaluatePosition } from './evaluation';
-import type { Explanation, SearchCandidate } from '@/types';
+import { MATE_SCORE, MATE_THRESHOLD } from './constants';
+import type { Explanation, MoveQuality, SearchCandidate } from '@/types';
 
 // 评估值转人类可读分数（类似 Stockfish 的 +1.2 / -0.8）
+// 将杀编码：±(MATE_SCORE - distanceToMate)，距离越近分数绝对值越大
 export function evalToText(evalScore: number): string {
-  if (Math.abs(evalScore) > 90000) {
-    // 将杀
-    const movesToMate = Math.ceil((Math.abs(evalScore) - 90000) / 1);
+  if (Math.abs(evalScore) > MATE_SCORE - MATE_THRESHOLD) {
+    // 将杀：反推距离 = MATE_SCORE - |score|
+    const distance = MATE_SCORE - Math.abs(evalScore);
+    const movesToMate = Math.max(1, Math.ceil(distance / 2)); // 半步转整步
     const sign = evalScore > 0 ? '+' : '-';
     return `${sign}M${movesToMate}`;
   }
@@ -16,19 +19,32 @@ export function evalToText(evalScore: number): string {
   return (evalScore > 0 ? '+' : '') + pawns;
 }
 
+// 走法质量分级：依据从走子方视角的评估 delta（正=好，负=差）
+// 阈值参考：>0 最佳；>-50 良好；>-100 可疑；>-300 失误；其余 败着
+export function classifyMoveQuality(delta: number): MoveQuality {
+  if (delta < -300) return 'blunder';
+  if (delta < -100) return 'mistake';
+  if (delta < -50) return 'dubious';
+  if (delta < 50) return 'good';
+  return 'best';
+}
+
+// 子力显示分值（用于讲解器的子力对比，单位：兵=1）
+const PIECE_DISPLAY_VALUES: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+
 // 检测当前局面的战术主题
 function detectThemes(game: Chess, bestMove?: SearchCandidate): string[] {
-  const themes: string[] = [];
+  const themes = new Set<string>();
   const board = game.board();
 
   // 是否将军
-  if (game.inCheck()) themes.push('将军');
+  if (game.inCheck()) themes.add('将军');
 
   // 是否在开局阶段
   const history = game.history();
-  if (history.length < 12) themes.push('开局阶段');
-  else if (history.length < 30) themes.push('中局阶段');
-  else themes.push('残局阶段');
+  if (history.length < 12) themes.add('开局阶段');
+  else if (history.length < 30) themes.add('中局阶段');
+  else themes.add('残局阶段');
 
   // 中心控制
   const centerSquares = [
@@ -42,35 +58,34 @@ function detectThemes(game: Chess, bestMove?: SearchCandidate): string[] {
       else blackCenter++;
     }
   }
-  if (whiteCenter > blackCenter) themes.push('白方控制中心');
-  else if (blackCenter > whiteCenter) themes.push('黑方控制中心');
+  if (whiteCenter > blackCenter) themes.add('白方控制中心');
+  else if (blackCenter > whiteCenter) themes.add('黑方控制中心');
 
   // 子力对比
   let whiteMaterial = 0, blackMaterial = 0;
   for (const row of board) {
     for (const p of row) {
       if (!p) continue;
-      const val = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 }[p.type];
+      const val = PIECE_DISPLAY_VALUES[p.type];
       if (p.color === 'w') whiteMaterial += val;
       else blackMaterial += val;
     }
   }
-  if (whiteMaterial > blackMaterial + 1) themes.push('白方子力优势');
-  else if (blackMaterial > whiteMaterial + 1) themes.push('黑方子力优势');
+  if (whiteMaterial > blackMaterial + 1) themes.add('白方子力优势');
+  else if (blackMaterial > whiteMaterial + 1) themes.add('黑方子力优势');
 
   // 走子特征
   if (bestMove) {
-    if (bestMove.move.includes('x')) themes.push('吃子');
-    if (bestMove.move.includes('+')) themes.push('将军');
-    if (bestMove.move.includes('#')) themes.push('将杀');
-    if (bestMove.move.includes('=Q') || bestMove.move.includes('=R')) themes.push('升变');
+    if (bestMove.move.includes('x')) themes.add('吃子');
+    if (bestMove.move.includes('+')) themes.add('将军');
+    if (bestMove.move.includes('#')) themes.add('将杀');
+    if (bestMove.move.includes('=Q') || bestMove.move.includes('=R')) themes.add('升变');
     const san = bestMove.move;
-    // 短易位 / 长易位
-    if (san === 'O-O') themes.push('短易位');
-    if (san === 'O-O-O') themes.push('长易位');
+    if (san === 'O-O') themes.add('短易位');
+    if (san === 'O-O-O') themes.add('长易位');
   }
 
-  return themes;
+  return Array.from(themes);
 }
 
 // 评估风险等级
@@ -152,22 +167,4 @@ export function explainPosition(game: Chess, bestMove?: SearchCandidate): Explan
     details,
     riskLevel,
   };
-}
-
-// 复盘走子评级
-export function classifyMove(evalBefore: number, evalAfter: number, bestEval: number, turn: 'w' | 'b'): {
-  quality: 'best' | 'good' | 'dubious' | 'mistake' | 'blunder';
-  isBest: boolean;
-} {
-  // 评估值始终白方视角，需根据走子方转换
-  // 走子方走完后，若 evalAfter 较 bestEval 差，则该走子有损失
-  const perspective = turn === 'w' ? 1 : -1;
-  const loss = (bestEval - evalAfter) * perspective; // 越大越差
-
-  const isBest = Math.abs(loss) < 10;
-  if (isBest) return { quality: 'best', isBest: true };
-  if (loss < 30) return { quality: 'good', isBest: false };
-  if (loss < 80) return { quality: 'dubious', isBest: false };
-  if (loss < 200) return { quality: 'mistake', isBest: false };
-  return { quality: 'blunder', isBest: false };
 }
