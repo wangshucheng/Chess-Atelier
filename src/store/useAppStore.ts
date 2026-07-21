@@ -11,6 +11,23 @@ const MAX_PGN_LENGTH = 50_000;
 // 音效开关独立持久化 key（不混入 progress，避免重置进度时连带重置）
 const SOUND_KEY = 'chess-atelier-sound-enabled';
 
+// 合法走步预览开关独立持久化 key（与音效同级，默认开启）
+const LEGAL_MOVES_KEY = 'chess-atelier-legal-moves';
+function loadShowLegalMoves(): boolean {
+  try {
+    return localStorage.getItem(LEGAL_MOVES_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+function saveShowLegalMoves(enabled: boolean): void {
+  try {
+    localStorage.setItem(LEGAL_MOVES_KEY, String(enabled));
+  } catch {
+    // 隐私模式 / 配额满：忽略
+  }
+}
+
 // crypto.randomUUID 在非安全上下文（HTTP 非 localhost）下不可用，加 fallback
 function genId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -45,10 +62,13 @@ interface AppState {
   sessionStart: number;
   // 音效开关（独立持久化，不受 resetAllProgress 影响）
   soundEnabled: boolean;
+  // 合法走步预览开关（选中/拖动棋子时高亮可走目标格；全局可调）
+  showLegalMoves: boolean;
 
   // Actions
   setMobileNavOpen: (open: boolean) => void;
   setSoundEnabled: (enabled: boolean) => void;
+  setShowLegalMoves: (enabled: boolean) => void;
   recordGame: (result: 'win' | 'loss' | 'draw') => void;
   recordPuzzleSolved: (puzzleId: string, level: PuzzleLevel) => void;
   recordPuzzleAttempt: (level: PuzzleLevel) => void;
@@ -77,12 +97,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     return enabled;
   })(),
 
+  // 合法走步预览默认开启
+  showLegalMoves: loadShowLegalMoves(),
+
   setMobileNavOpen: (open) => set({ mobileNavOpen: open }),
 
   setSoundEnabled: (enabled) => {
     syncSoundEngine(enabled);
     saveSoundEnabled(enabled);
     set({ soundEnabled: enabled });
+  },
+
+  setShowLegalMoves: (enabled) => {
+    saveShowLegalMoves(enabled);
+    set({ showLegalMoves: enabled });
   },
 
   recordGame: (result) => {

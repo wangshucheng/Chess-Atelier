@@ -1,6 +1,6 @@
 // 左侧栏导航
 import { NavLink } from 'react-router-dom';
-import { Home, Swords, BookOpen, Puzzle, Reply, RotateCcw, Volume2, VolumeX } from 'lucide-react';
+import { Home, Swords, BookOpen, Puzzle, Reply, RotateCcw, Target, Volume2, VolumeX } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/store/useAppStore';
 import { useConfirm } from '@/components/ConfirmModal';
@@ -19,13 +19,15 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ onNavigate }: SidebarProps = {}) {
-  // 浅比较订阅 progress + resetAllProgress + soundEnabled
-  const { progress, resetAllProgress, soundEnabled, setSoundEnabled } = useAppStore(
+  // 浅比较订阅 progress + resetAllProgress + soundEnabled + showLegalMoves
+  const { progress, resetAllProgress, soundEnabled, setSoundEnabled, showLegalMoves, setShowLegalMoves } = useAppStore(
     useShallow((s) => ({
       progress: s.progress,
       resetAllProgress: s.resetAllProgress,
       soundEnabled: s.soundEnabled,
       setSoundEnabled: s.setSoundEnabled,
+      showLegalMoves: s.showLegalMoves,
+      setShowLegalMoves: s.setShowLegalMoves,
     })),
   );
   const confirm = useConfirm();
@@ -47,6 +49,13 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
   const handleToggleSound = () => {
     const next = !soundEnabled;
     setSoundEnabled(next);
+    if (next) play('click');
+  };
+
+  // 切换合法走步预览：开启时播放一次点击反馈
+  const handleToggleLegalMoves = () => {
+    const next = !showLegalMoves;
+    setShowLegalMoves(next);
     if (next) play('click');
   };
 
@@ -112,7 +121,20 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
             <div className="text-[9px] text-ivoryDim uppercase tracking-wider">解题</div>
           </div>
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
+        <button
+          onClick={handleToggleLegalMoves}
+          aria-pressed={showLegalMoves}
+          aria-label={showLegalMoves ? '关闭合法走步预览' : '开启合法走步预览'}
+          className={`flex items-center justify-center gap-1.5 text-[10px] uppercase tracking-widest py-1.5 mb-2 transition-colors border rounded-sm ${
+            showLegalMoves
+              ? 'border-gold/30 text-gold/80 hover:text-gold hover:border-gold/50'
+              : 'border-gold/10 text-ivoryDim/50 hover:text-ivoryDim hover:border-gold/20'
+          }`}
+        >
+          <Target size={10} />
+          {showLegalMoves ? '合法步预览·开' : '合法步预览·关'}
+        </button>
+        <div className="grid grid-cols-2 gap-2">
           <button
             onClick={handleToggleSound}
             aria-pressed={soundEnabled}
