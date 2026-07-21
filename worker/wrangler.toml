@@ -9,9 +9,10 @@ binding = "ROOMS_KV"
 id = "139c8df89cc04ac88fd41098964fbc4c"
 preview_id = "bb4d88cd9de84aac9ec7de3b7e8c8423"
 
-# 可选：自定义域名
+# 可选：自定义域名 / 允许的跨域源
+# 联机前端部署在 GitHub Pages，需允许其源；用 "*" 允许任意源（demo 足够，且请求不使用凭证）
 [vars]
-CORS_ORIGIN = "https://chess-multiplayer.122181582.workers.dev"
+CORS_ORIGIN = "*"
 
 # 注意：本 Worker 免费档额度：
 # - 100,000 次/天 请求
