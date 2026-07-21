@@ -1,9 +1,11 @@
 // 棋理讲解生成器：将评估值与局面特征转译为人类可读的解说
+// 文本全部通过传入的 t（翻译函数）生成，实现与具体语言解耦。
 
 import { Chess } from 'chess.js';
 import { evaluatePosition } from './evaluation';
 import { MATE_SCORE, MATE_THRESHOLD } from './constants';
 import type { Explanation, MoveQuality, SearchCandidate } from '@/types';
+import type { Translate } from '@/i18n';
 
 // 评估值转人类可读分数（类似 Stockfish 的 +1.2 / -0.8）
 // 将杀编码：±(MATE_SCORE - distanceToMate)，距离越近分数绝对值越大
@@ -32,21 +34,34 @@ export function classifyMoveQuality(delta: number): MoveQuality {
 // 子力显示分值（用于讲解器的子力对比，单位：兵=1）
 const PIECE_DISPLAY_VALUES: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
-// 检测当前局面的战术主题
-function detectThemes(game: Chess, bestMove?: SearchCandidate): string[] {
-  const themes = new Set<string>();
+// 主题键（对应 i18n engine.themes.*），作为内部检测与展示的中间表达
+type ThemeKey =
+  | 'check'
+  | 'opening'
+  | 'middlegame'
+  | 'endgame'
+  | 'whiteCenter'
+  | 'blackCenter'
+  | 'whiteMaterial'
+  | 'blackMaterial'
+  | 'capture'
+  | 'mate'
+  | 'promotion'
+  | 'castleK'
+  | 'castleQ';
+
+// 检测当前局面的战术主题（返回与语言无关的键）
+function detectThemes(game: Chess, bestMove?: SearchCandidate): ThemeKey[] {
+  const themes = new Set<ThemeKey>();
   const board = game.board();
 
-  // 是否将军
-  if (game.inCheck()) themes.add('将军');
+  if (game.inCheck()) themes.add('check');
 
-  // 是否在开局阶段
   const history = game.history();
-  if (history.length < 12) themes.add('开局阶段');
-  else if (history.length < 30) themes.add('中局阶段');
-  else themes.add('残局阶段');
+  if (history.length < 12) themes.add('opening');
+  else if (history.length < 30) themes.add('middlegame');
+  else themes.add('endgame');
 
-  // 中心控制
   const centerSquares = [
     { f: 3, r: 3 }, { f: 4, r: 3 }, { f: 3, r: 4 }, { f: 4, r: 4 },
   ];
@@ -58,10 +73,9 @@ function detectThemes(game: Chess, bestMove?: SearchCandidate): string[] {
       else blackCenter++;
     }
   }
-  if (whiteCenter > blackCenter) themes.add('白方控制中心');
-  else if (blackCenter > whiteCenter) themes.add('黑方控制中心');
+  if (whiteCenter > blackCenter) themes.add('whiteCenter');
+  else if (blackCenter > whiteCenter) themes.add('blackCenter');
 
-  // 子力对比
   let whiteMaterial = 0, blackMaterial = 0;
   for (const row of board) {
     for (const p of row) {
@@ -71,18 +85,16 @@ function detectThemes(game: Chess, bestMove?: SearchCandidate): string[] {
       else blackMaterial += val;
     }
   }
-  if (whiteMaterial > blackMaterial + 1) themes.add('白方子力优势');
-  else if (blackMaterial > whiteMaterial + 1) themes.add('黑方子力优势');
+  if (whiteMaterial > blackMaterial + 1) themes.add('whiteMaterial');
+  else if (blackMaterial > whiteMaterial + 1) themes.add('blackMaterial');
 
-  // 走子特征
   if (bestMove) {
-    if (bestMove.move.includes('x')) themes.add('吃子');
-    if (bestMove.move.includes('+')) themes.add('将军');
-    if (bestMove.move.includes('#')) themes.add('将杀');
-    if (bestMove.move.includes('=Q') || bestMove.move.includes('=R')) themes.add('升变');
-    const san = bestMove.move;
-    if (san === 'O-O') themes.add('短易位');
-    if (san === 'O-O-O') themes.add('长易位');
+    if (bestMove.move.includes('x')) themes.add('capture');
+    if (bestMove.move.includes('+')) themes.add('check');
+    if (bestMove.move.includes('#')) themes.add('mate');
+    if (bestMove.move.includes('=Q') || bestMove.move.includes('=R')) themes.add('promotion');
+    if (bestMove.move === 'O-O') themes.add('castleK');
+    if (bestMove.move === 'O-O-O') themes.add('castleQ');
   }
 
   return Array.from(themes);
@@ -97,72 +109,69 @@ function assessRisk(evalScore: number, turn: 'w' | 'b'): 'low' | 'medium' | 'hig
   return 'low';
 }
 
-// 生成讲解
-export function explainPosition(game: Chess, bestMove?: SearchCandidate): Explanation {
+// 生成讲解（文本经 t 生成，随语言切换）
+export function explainPosition(game: Chess, bestMove: SearchCandidate | undefined, t: Translate): Explanation {
   const evalScore = evaluatePosition(game);
   const turn = game.turn();
   const themes = detectThemes(game, bestMove);
   const riskLevel = assessRisk(evalScore, turn);
 
-  const sideName = turn === 'w' ? '白方' : '黑方';
   const evalText = evalToText(evalScore);
-  const advantageSide = evalScore > 50 ? '白方' : evalScore < -50 ? '黑方' : '双方均势';
+  const sideKey = evalScore > 50 ? 'white' : evalScore < -50 ? 'black' : 'equal';
+  const sideStr = t(`engine.side.${sideKey}` as const);
 
   const summary = bestMove
-    ? `当前局面评估 ${evalText}（${advantageSide}略优），推荐走法 ${bestMove.move}，期望延续${bestMove.move.includes('x') ? '子力' : '局面'}优势。`
-    : `当前局面评估 ${evalText}，${advantageSide}${Math.abs(evalScore) > 100 ? '略占优势' : '势均力敌'}。`;
+    ? t('engine.summary.withBest', {
+        eval: evalText,
+        side: sideStr,
+        move: bestMove.move,
+        advantage: t(bestMove.move.includes('x') ? 'engine.advantage.material' : 'engine.advantage.position'),
+      })
+    : t('engine.summary.noBest', {
+        eval: evalText,
+        side: sideStr,
+        status: t(Math.abs(evalScore) > 100 ? 'engine.status.leading' : 'engine.status.even'),
+      });
 
   const details: string[] = [];
 
-  // 阶段说明
-  if (themes.includes('开局阶段')) {
-    details.push(`当前处于开局阶段（${game.history().length} 手），核心目标为：抢占中心、轻子力出动、王车易位保障王安全。`);
-  } else if (themes.includes('中局阶段')) {
-    details.push(`已进入中局，应关注子力协调与战术机会（牵制、双重攻击、闪击）。`);
+  const phaseKey: ThemeKey = themes.includes('opening')
+    ? 'opening'
+    : themes.includes('middlegame')
+      ? 'middlegame'
+      : 'endgame';
+  if (phaseKey === 'opening') {
+    details.push(t('engine.detail.opening', { moves: game.history().length }));
+  } else if (phaseKey === 'middlegame') {
+    details.push(t('engine.detail.middlegame'));
   } else {
-    details.push(`残局阶段，王应主动参与，关注兵的升变通路与对方王的限制。`);
+    details.push(t('engine.detail.endgame'));
   }
 
-  // 中心
-  if (themes.includes('白方控制中心')) {
-    details.push(`白方在中心 e4/d4/e5/d5 区域拥有更多子力，掌握空间主动权。`);
-  } else if (themes.includes('黑方控制中心')) {
-    details.push(`黑方中心部署稳固，白方需寻找反击点（如侧翼突破或 c/f 文件进攻）。`);
-  }
+  if (themes.includes('whiteCenter')) details.push(t('engine.detail.whiteCenter'));
+  else if (themes.includes('blackCenter')) details.push(t('engine.detail.blackCenter'));
 
-  // 子力
-  if (themes.includes('白方子力优势')) {
-    details.push(`白方子力领先，应避免兑子以保持优势，寻找简化局面的机会。`);
-  } else if (themes.includes('黑方子力优势')) {
-    details.push(`黑方子力占优，${sideName}需主动寻求战术补偿或长将和棋机会。`);
-  }
+  if (themes.includes('whiteMaterial')) details.push(t('engine.detail.whiteMaterial'));
+  else if (themes.includes('blackMaterial')) details.push(t('engine.detail.blackMaterial', { side: sideStr }));
 
-  // 风险
-  if (riskLevel === 'high') {
-    details.push(`⚠ 当前局面风险较高，需谨慎应对，避免冒险进攻导致防守漏洞。`);
-  } else if (riskLevel === 'medium') {
-    details.push(`局面存在一定张力，双方均需精确计算关键变着。`);
-  } else {
-    details.push(`局面相对平稳，可按计划推进战略部署。`);
-  }
+  if (riskLevel === 'high') details.push(t('engine.detail.riskHigh'));
+  else if (riskLevel === 'medium') details.push(t('engine.detail.riskMedium'));
+  else details.push(t('engine.detail.riskLow'));
 
-  // 推荐走法说明
   if (bestMove) {
-    if (bestMove.move.includes('#')) {
-      details.push(`推荐走法 ${bestMove.move} 为将杀，可直接结束对局。`);
-    } else if (bestMove.move.includes('+')) {
-      details.push(`推荐走法 ${bestMove.move} 为将军，迫使对方应将，可获取主动权。`);
-    } else if (bestMove.move.includes('x')) {
-      details.push(`推荐走法 ${bestMove.move} 为吃子，可获取子力优势。`);
-    } else if (bestMove.move === 'O-O' || bestMove.move === 'O-O-O') {
-      details.push(`推荐走法 ${bestMove.move} 为王车易位，强化王的安全并连通车。`);
-    } else {
-      details.push(`推荐走法 ${bestMove.move} 旨在改善子力位置或控制关键格。`);
-    }
+    if (bestMove.move.includes('#')) details.push(t('engine.detail.mate', { move: bestMove.move }));
+    else if (bestMove.move.includes('+')) details.push(t('engine.detail.check', { move: bestMove.move }));
+    else if (bestMove.move.includes('x')) details.push(t('engine.detail.capture', { move: bestMove.move }));
+    else if (bestMove.move === 'O-O' || bestMove.move === 'O-O-O')
+      details.push(t('engine.detail.castle', { move: bestMove.move }));
+    else details.push(t('engine.detail.improve', { move: bestMove.move }));
   }
+
+  // 展示用主题（已本地化）
+  const themesDisplay = themes.map((key) => t(`engine.themes.${key}` as const));
 
   return {
-    themes,
+    themes: themesDisplay,
     summary,
     details,
     riskLevel,

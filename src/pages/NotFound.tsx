@@ -1,21 +1,21 @@
-// 404 路由：未匹配的路径统一回退到此页
 import { Link } from 'react-router-dom';
-import { Compass, ArrowLeft } from 'lucide-react';
+import { Compass } from 'lucide-react';
+import { useI18n } from '@/i18n';
 
 export default function NotFound() {
+  const { t } = useI18n();
   return (
-    <div className="px-6 py-20 max-w-[640px] mx-auto text-center">
-      <Compass size={36} className="text-gold/50 mx-auto mb-4" />
-      <div className="font-display text-6xl text-gold mb-3">404</div>
-      <h2 className="font-display text-2xl text-ivory mb-2">路径不存在</h2>
-      <p className="text-sm text-ivoryDim mb-6">
-        你访问的页面已不在棋盘上，请返回主页或继续训练。
-      </p>
+    <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-6">
+      <div className="font-display text-8xl text-gold/30 leading-none mb-4">404</div>
+      <div className="w-12 h-px bg-gold/30 mb-6" />
+      <h1 className="font-display text-2xl text-ivory mb-2">{t('notFound.title')}</h1>
+      <p className="text-sm text-ivoryDim max-w-md mb-8">{t('notFound.desc')}</p>
       <Link
         to="/"
-        className="btn-gold-solid px-4 py-2 rounded-sm text-xs uppercase tracking-widest inline-flex items-center gap-1.5"
+        className="btn-gold-outline px-5 py-2.5 rounded-sm text-xs uppercase tracking-[0.25em] inline-flex items-center gap-2"
       >
-        <ArrowLeft size={12} /> 返回首页
+        <Compass size={14} />
+        {t('notFound.back')}
       </Link>
     </div>
   );

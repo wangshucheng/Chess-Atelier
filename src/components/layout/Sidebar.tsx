@@ -4,15 +4,17 @@ import { Home, Swords, BookOpen, Puzzle, Reply, Users, Target, RotateCcw, Volume
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/store/useAppStore';
 import { useConfirm } from '@/components/ConfirmModal';
+import { useI18n } from '@/i18n';
+import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { play } from '@/lib/sounds';
 
 const navItems = [
-  { to: '/', label: '首页', labelEn: 'Atelier', icon: Home },
-  { to: '/play', label: '陪练对战', labelEn: 'Play', icon: Swords },
-  { to: '/openings', label: '开局训练', labelEn: 'Openings', icon: BookOpen },
-  { to: '/puzzles', label: '习题库', labelEn: 'Puzzles', icon: Puzzle },
-  { to: '/multiplayer', label: '联机对战', labelEn: 'Multiplayer', icon: Users },
-  { to: '/review', label: '棋局复盘', labelEn: 'Review', icon: Reply },
+  { to: '/', key: 'nav.home' as const, en: 'Atelier', icon: Home },
+  { to: '/play', key: 'nav.play' as const, en: 'Play', icon: Swords },
+  { to: '/openings', key: 'nav.openings' as const, en: 'Openings', icon: BookOpen },
+  { to: '/puzzles', key: 'nav.puzzles' as const, en: 'Puzzles', icon: Puzzle },
+  { to: '/multiplayer', key: 'nav.multiplayer' as const, en: 'Multiplayer', icon: Users },
+  { to: '/review', key: 'nav.review' as const, en: 'Review', icon: Reply },
 ];
 
 interface SidebarProps {
@@ -32,15 +34,16 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
     })),
   );
   const confirm = useConfirm();
+  const { t, locale } = useI18n();
   const winRate = progress.playStats.totalGames > 0
     ? Math.round((progress.playStats.wins / progress.playStats.totalGames) * 100)
     : 0;
 
   const handleReset = async () => {
     const ok = await confirm({
-      title: '重置所有训练进度？',
-      message: '此操作不可撤销，将清空所有对局记录、习题进度与开局练习记录。',
-      confirmText: '重置',
+      title: t('sidebar.resetConfirm.title'),
+      message: t('sidebar.resetConfirm.message'),
+      confirmText: t('sidebar.resetConfirm.confirm'),
       danger: true,
     });
     if (ok) resetAllProgress();
@@ -70,13 +73,13 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
           </div>
           <div>
             <div className="font-display text-xl text-ivory leading-tight tracking-tight-display">Chess Atelier</div>
-            <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60">训练 · 陪练 · 复盘</div>
+            <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60">{t('sidebar.brandSubtitle')}</div>
           </div>
         </div>
       </div>
 
       {/* 导航 */}
-      <nav aria-label="主导航" className="flex-1 py-6 px-3 space-y-1 overflow-y-auto">
+      <nav aria-label={t('nav.primaryNav')} className="flex-1 py-6 px-3 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -95,10 +98,12 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
             >
               <Icon size={16} className="shrink-0" />
               <div className="flex flex-col leading-tight">
-                <span className="text-sm font-medium">{item.label}</span>
-                <span className="text-[10px] uppercase tracking-widest text-gold/40 group-hover:text-gold/60">
-                  {item.labelEn}
-                </span>
+                <span className="text-sm font-medium">{t(item.key)}</span>
+                {locale === 'zh-CN' && (
+                  <span className="text-[10px] uppercase tracking-widest text-gold/40 group-hover:text-gold/60">
+                    {item.en}
+                  </span>
+                )}
               </div>
             </NavLink>
           );
@@ -107,25 +112,25 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
 
       {/* 训练数据快览 */}
       <div className="px-4 py-4 border-t border-gold/10 space-y-2">
-        <div className="text-[10px] uppercase tracking-[0.25em] text-gold/50">训练概览</div>
+        <div className="text-[10px] uppercase tracking-[0.25em] text-gold/50">{t('nav.overview')}</div>
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="bg-ink-800/60 border border-gold/10 rounded-sm py-2">
             <div className="font-mono text-sm text-gold">{progress.playStats.totalGames}</div>
-            <div className="text-[9px] text-ivoryDim uppercase tracking-wider">对局</div>
+            <div className="text-[9px] text-ivoryDim uppercase tracking-wider">{t('nav.stats.games')}</div>
           </div>
           <div className="bg-ink-800/60 border border-gold/10 rounded-sm py-2">
             <div className="font-mono text-sm text-gold">{winRate}%</div>
-            <div className="text-[9px] text-ivoryDim uppercase tracking-wider">胜率</div>
+            <div className="text-[9px] text-ivoryDim uppercase tracking-wider">{t('nav.stats.winRate')}</div>
           </div>
           <div className="bg-ink-800/60 border border-gold/10 rounded-sm py-2">
             <div className="font-mono text-sm text-gold">{progress.puzzleProgress.solved.length}</div>
-            <div className="text-[9px] text-ivoryDim uppercase tracking-wider">解题</div>
+            <div className="text-[9px] text-ivoryDim uppercase tracking-wider">{t('nav.stats.puzzles')}</div>
           </div>
         </div>
         <button
           onClick={handleToggleLegalMoves}
           aria-pressed={showLegalMoves}
-          aria-label={showLegalMoves ? '关闭合法走步预览' : '开启合法走步预览'}
+          aria-label={showLegalMoves ? t('sidebar.legalOnAria') : t('sidebar.legalOffAria')}
           className={`flex items-center justify-center gap-1.5 text-[10px] uppercase tracking-widest py-1.5 mb-2 transition-colors border rounded-sm ${
             showLegalMoves
               ? 'border-gold/30 text-gold/80 hover:text-gold hover:border-gold/50'
@@ -133,13 +138,13 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
           }`}
         >
           <Target size={10} />
-          {showLegalMoves ? '合法步预览·开' : '合法步预览·关'}
+          {showLegalMoves ? t('sidebar.toggleLegalOn') : t('sidebar.toggleLegalOff')}
         </button>
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={handleToggleSound}
             aria-pressed={soundEnabled}
-            aria-label={soundEnabled ? '关闭音效' : '开启音效'}
+            aria-label={soundEnabled ? t('sidebar.soundOnAria') : t('sidebar.soundOffAria')}
             className={`flex items-center justify-center gap-1.5 text-[10px] uppercase tracking-widest py-1.5 transition-colors border rounded-sm ${
               soundEnabled
                 ? 'border-gold/30 text-gold/80 hover:text-gold hover:border-gold/50'
@@ -147,16 +152,17 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
             }`}
           >
             {soundEnabled ? <Volume2 size={10} /> : <VolumeX size={10} />}
-            {soundEnabled ? '音效开' : '音效关'}
+            {soundEnabled ? t('sidebar.soundOn') : t('sidebar.soundOff')}
           </button>
           <button
             onClick={handleReset}
             className="flex items-center justify-center gap-1.5 text-[10px] uppercase tracking-widest text-ivoryDim/60 hover:text-wine transition-colors py-1.5 border border-transparent hover:border-wine/20 rounded-sm"
           >
             <RotateCcw size={10} />
-            重置进度
+            {t('sidebar.reset')}
           </button>
         </div>
+        <LanguageSwitcher />
       </div>
     </aside>
   );

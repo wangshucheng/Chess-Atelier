@@ -5,21 +5,18 @@ import { BookOpen, Search, ArrowRight, Layers, AlertTriangle, RotateCcw } from '
 import { loadOpenings } from '@/data';
 import type { Opening } from '@/types';
 import { useAppStore } from '@/store/useAppStore';
+import { useI18n } from '@/i18n';
+import type { Path, TranslationSchema } from '@/i18n';
 
-const CATEGORY_LABEL: Record<Opening['category'], { zh: string; en: string }> = {
-  open: { zh: '开放性', en: 'Open' },
-  'semi-open': { zh: '半开放性', en: 'Semi-Open' },
-  closed: { zh: '封闭性', en: 'Closed' },
-};
-
-const CATEGORY_FILTERS: ({ key: 'all' | Opening['category']; label: string })[] = [
-  { key: 'all', label: '全部' },
-  { key: 'open', label: '开放性' },
-  { key: 'semi-open', label: '半开放性' },
-  { key: 'closed', label: '封闭性' },
+const CATEGORY_FILTERS: { key: 'all' | Opening['category']; i18n: string }[] = [
+  { key: 'all', i18n: 'openings.filters.all' },
+  { key: 'open', i18n: 'openings.filters.open' },
+  { key: 'semi-open', i18n: 'openings.filters.semiOpen' },
+  { key: 'closed', i18n: 'openings.filters.closed' },
 ];
 
 export default function Openings() {
+  const { t, locale } = useI18n();
   const [openings, setOpenings] = useState<Opening[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -40,23 +37,25 @@ export default function Openings() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setLoadError(err instanceof Error ? err.message : '开局数据加载失败');
+        setLoadError(err instanceof Error ? err.message : t('openings.loadError', { err: '' }));
         setLoading(false);
       });
-    return () => { cancelled = true; };
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
 
   if (loadError) {
     return (
       <div className="px-4 md:px-10 py-16 max-w-[1400px] mx-auto">
         <div className="card-gold rounded-sm p-12 text-center">
           <AlertTriangle size={32} className="text-wine mx-auto mb-3" />
-          <div className="text-sm text-ivoryDim mb-4">开局数据加载失败：{loadError}</div>
+          <div className="text-sm text-ivoryDim mb-4">{t('openings.loadError', { err: loadError })}</div>
           <button
             onClick={() => window.location.reload()}
             className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest inline-flex items-center gap-1.5"
           >
-            <RotateCcw size={12} /> 重新加载
+            <RotateCcw size={12} /> {t('openings.reload')}
           </button>
         </div>
       </div>
@@ -90,15 +89,15 @@ export default function Openings() {
         <div className="flex items-end justify-between">
           <div>
             <h1 className="font-display text-5xl text-ivory tracking-tight-display animate-fade-up">
-              开局<span className="text-gold italic">训练</span>库
+              {t('openings.title')}
             </h1>
             <p className="text-sm text-ivoryDim mt-2 animate-fade-up" style={{ animationDelay: '0.15s' }}>
-              十大热门开局体系 · 主线演练与变体推演
+              {t('openings.subtitle')}
             </p>
           </div>
           <div className="text-right text-xs text-ivoryDim">
             <div className="font-mono text-2xl text-gold">{openings.length}</div>
-            <div className="text-[10px] uppercase tracking-widest">开局数量</div>
+            <div className="text-[10px] uppercase tracking-widest">{t('openings.countSuffix')}</div>
           </div>
         </div>
       </header>
@@ -111,12 +110,12 @@ export default function Openings() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索开局名称、ECO 或关键词…"
-            aria-label="搜索开局"
+            placeholder={t('openings.searchPlaceholder')}
+            aria-label={t('openings.searchAria')}
             className="w-full pl-9 pr-3 py-2 bg-ink-800/60 border border-gold/15 rounded-sm text-sm text-ivory placeholder:text-ivoryDim/50 focus:outline-none focus:border-gold/50 transition-colors"
           />
         </div>
-        <div className="flex items-center gap-1.5" role="group" aria-label="开局分类筛选">
+        <div className="flex items-center gap-1.5" role="group" aria-label={t('openings.filters.group')}>
           {CATEGORY_FILTERS.map((f) => (
             <button
               key={f.key}
@@ -128,7 +127,7 @@ export default function Openings() {
                   : 'border border-gold/10 text-ivoryDim hover:text-ivory hover:border-gold/30'
               }`}
             >
-              {f.label}
+              {t(f.i18n as Path<TranslationSchema>)}
             </button>
           ))}
         </div>
@@ -149,12 +148,14 @@ export default function Openings() {
       ) : filtered.length === 0 ? (
         <div className="card-gold rounded-sm p-12 text-center">
           <Layers size={32} className="text-gold/30 mx-auto mb-3" />
-          <div className="text-sm text-ivoryDim">未找到匹配的开局</div>
+          <div className="text-sm text-ivoryDim">{t('openings.noMatch')}</div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filtered.map((o, idx) => {
             const practiced = openingProgress[o.eco];
+            const namePrimary = locale === 'zh-CN' ? o.nameZh : o.name;
+            const nameSecondary = locale === 'zh-CN' ? o.name : o.nameZh;
             return (
               <Link
                 key={o.eco}
@@ -167,16 +168,16 @@ export default function Openings() {
                   <div>
                     <div className="font-mono text-xs text-gold/70 mb-1">{o.eco}</div>
                     <h3 className="font-display text-2xl text-ivory tracking-tight-display leading-tight">
-                      {o.nameZh}
+                      {namePrimary}
                     </h3>
-                    <div className="text-[10px] uppercase tracking-widest text-ivoryDim/70 mt-0.5">{o.name}</div>
+                    <div className="text-[10px] uppercase tracking-widest text-ivoryDim/70 mt-0.5">{nameSecondary}</div>
                   </div>
                   <span className={`text-[9px] uppercase tracking-widest px-2 py-1 rounded-sm border ${
                     o.category === 'open' ? 'border-gold/40 text-gold bg-gold/5' :
                     o.category === 'semi-open' ? 'border-moss/40 text-moss bg-moss/5' :
                     'border-wine/40 text-wine bg-wine/5'
                   }`}>
-                    {CATEGORY_LABEL[o.category].zh}
+                    {t(`openings.category.${o.category}` as Path<TranslationSchema>)}
                   </span>
                 </div>
 
@@ -184,11 +185,11 @@ export default function Openings() {
 
                 <div className="mt-4 pt-4 border-t border-gold/10 flex items-center justify-between">
                   <div className="text-[10px] text-ivoryDim font-mono">
-                    主线 {o.mainLine.length} 手 · 变体 {o.variations.length} 种
+                    {t('openings.lineInfo', { n: o.mainLine.length, n2: o.variations.length })}
                   </div>
                   {practiced ? (
                     <span className="text-[10px] uppercase tracking-widest text-moss flex items-center gap-1">
-                      已练 {practiced.practices} 次
+                      {t('openings.practicedCount', { n: practiced.practices })}
                     </span>
                   ) : (
                     <ArrowRight size={14} className="text-gold/50 group-hover:text-gold group-hover:translate-x-1 transition-all" />

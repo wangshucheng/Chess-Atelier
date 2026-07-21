@@ -1,6 +1,7 @@
 // 全局错误边界：捕获子树渲染异常，避免整页白屏
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
+import { I18nContext } from '@/i18n';
 
 interface Props {
   children: ReactNode;
@@ -11,6 +12,10 @@ interface State {
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
+  static contextType = I18nContext;
+  // 通过 contextType 访问 i18n（类组件无法直接使用 hooks）
+  declare context: import('@/i18n').I18nContextValue | null;
+
   state: State = { hasError: false };
 
   static getDerivedStateFromError(error: Error): State {
@@ -30,18 +35,19 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (!this.state.hasError) return this.props.children;
+    const t = this.context?.t ?? ((k: string) => k);
     return (
       <div className="px-6 py-20 max-w-[640px] mx-auto text-center">
         <AlertTriangle size={36} className="text-wine mx-auto mb-4" />
-        <h2 className="font-display text-3xl text-ivory mb-2">页面渲染异常</h2>
+        <h2 className="font-display text-3xl text-ivory mb-2">{t('errorBoundary.title')}</h2>
         <p className="text-sm text-ivoryDim mb-6">
-          {this.state.message || '未知错误'}
+          {this.state.message || t('errorBoundary.unknown')}
         </p>
         <button
           onClick={this.handleReset}
           className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest inline-flex items-center gap-1.5"
         >
-          <RotateCcw size={12} /> 重新加载
+          <RotateCcw size={12} /> {t('errorBoundary.reload')}
         </button>
       </div>
     );

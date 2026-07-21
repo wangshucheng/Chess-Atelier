@@ -5,6 +5,7 @@ import { Menu, X, AlertTriangle } from 'lucide-react';
 import Sidebar from './Sidebar';
 import { useAppStore } from '@/store/useAppStore';
 import { isPersistFailed } from '@/lib/storage';
+import { useI18n } from '@/i18n';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -14,6 +15,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const mobileNavOpen = useAppStore((s) => s.mobileNavOpen);
   const setMobileNavOpen = useAppStore((s) => s.setMobileNavOpen);
   const [persistWarn, setPersistWarn] = useState(false);
+  const { t } = useI18n();
 
   // 路由切换时关闭移动端抽屉（通过监听 location 变化更复杂，这里用 hashchange）
   useEffect(() => {
@@ -68,7 +70,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           <button
             onClick={() => setMobileNavOpen(!mobileNavOpen)}
             className="text-ivory hover:text-gold transition-colors"
-            aria-label={mobileNavOpen ? '关闭菜单' : '打开菜单'}
+            aria-label={mobileNavOpen ? t('common.menuClose') : t('common.menuOpen')}
             aria-expanded={mobileNavOpen}
           >
             {mobileNavOpen ? <X size={20} /> : <Menu size={20} />}
@@ -86,7 +88,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             role="alert"
           >
             <AlertTriangle size={12} className="shrink-0" />
-            <span>进度保存失败，可能浏览器存储已满或处于隐私模式，刷新后进度将丢失。</span>
+            <span>{t('common.storageError')}</span>
           </div>
         )}
 

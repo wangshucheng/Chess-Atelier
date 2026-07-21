@@ -9,6 +9,8 @@ import { evalToText, classifyMoveQuality } from '@/engine/explainer';
 import { useAppStore } from '@/store/useAppStore';
 import type { EvalCurvePoint } from '@/components/board/EvalCurve';
 import type { MoveQuality } from '@/types';
+import { useI18n } from '@/i18n';
+import type { Path, TranslationSchema } from '@/i18n';
 import {
   Reply, Upload, Play, Pause, ChevronLeft, ChevronRight,
   SkipBack, SkipForward, Trash2, FileText, TrendingUp, AlertTriangle,
@@ -43,12 +45,13 @@ interface MoveAnalysis {
   moveNo: number;
 }
 
-const QUALITY_STYLE: Record<MoveQuality, { label: string; symbol: string; color: string; bg: string }> = {
-  best: { label: '最佳', symbol: '!!', color: 'text-moss', bg: 'bg-moss/15 border-moss/40' },
-  good: { label: '良好', symbol: '!', color: 'text-gold', bg: 'bg-gold/10 border-gold/30' },
-  dubious: { label: '可疑', symbol: '?!', color: 'text-gold/70', bg: 'bg-gold/5 border-gold/20' },
-  mistake: { label: '失误', symbol: '?', color: 'text-wine', bg: 'bg-wine/10 border-wine/30' },
-  blunder: { label: '败着', symbol: '??', color: 'text-wine', bg: 'bg-wine/20 border-wine/50' },
+// 走法质量样式：仅保留与语言无关的 symbol / color / bg；label 经 t 生成
+const QUALITY_STYLE: Record<MoveQuality, { symbol: string; color: string; bg: string }> = {
+  best: { symbol: '!!', color: 'text-moss', bg: 'bg-moss/15 border-moss/40' },
+  good: { symbol: '!', color: 'text-gold', bg: 'bg-gold/10 border-gold/30' },
+  dubious: { symbol: '?!', color: 'text-gold/70', bg: 'bg-gold/5 border-gold/20' },
+  mistake: { symbol: '?', color: 'text-wine', bg: 'bg-wine/10 border-wine/30' },
+  blunder: { symbol: '??', color: 'text-wine', bg: 'bg-wine/20 border-wine/50' },
 };
 
 // 走法单元格键盘激活（Enter / Space）
@@ -63,6 +66,7 @@ function handleMoveCellKey(
 }
 
 export default function Review() {
+  const { t } = useI18n();
   const [input, setInput] = useState('');
   const [parsed, setParsed] = useState<ParsedPgn | null>(null);
   const [singleFen, setSingleFen] = useState<string | null>(null);
@@ -86,38 +90,38 @@ export default function Review() {
     setIsPlaying(false);
 
     if (!input.trim()) {
-      setParseError('请输入 PGN 或 FEN 文本');
+      setParseError(t('review.errors.empty'));
       return;
     }
 
     if (input.length > MAX_PGN_LENGTH) {
-      setParseError(`输入过长（${input.length} 字符），上限 ${MAX_PGN_LENGTH}`);
+      setParseError(t('review.errors.tooLong', { len: input.length, max: MAX_PGN_LENGTH }));
       return;
     }
 
-    const format = detectInputFormat(input);
-    if (format === 'fen') {
+    const formatKind = detectInputFormat(input);
+    if (formatKind === 'fen') {
       const result = parseFen(input.trim());
       if (result.valid && result.fen) {
         setSingleFen(result.fen);
         setCurrentIdx(0);
       } else {
-        setParseError('FEN 格式无效，请检查输入');
+        setParseError(t('review.errors.invalidFen'));
       }
       return;
     }
 
-    if (format === 'pgn' || format === 'unknown') {
+    if (formatKind === 'pgn' || formatKind === 'unknown') {
       const result = parsePgn(input);
       if (result && result.moves.length > 0) {
         setParsed(result);
         setCurrentIdx(0);
         recordReview(input);
       } else {
-        setParseError('PGN 解析失败，请检查格式是否正确');
+        setParseError(t('review.errors.pgnFailed'));
       }
     }
-  }, [input, recordReview]);
+  }, [input, recordReview, t]);
 
   // 分析所有走法（计算每个 FEN 的静态评估）
   useEffect(() => {
@@ -167,7 +171,10 @@ export default function Review() {
         // 非法 FEN 或评估异常：终止分析并提示用户
         if (!cancelled) {
           setAnalyzing(false);
-          setParseError(`分析失败：${err instanceof Error ? err.message : String(err)}（在第 ${i + 1} 手附近）`);
+          setParseError(t('review.errors.analyzeFailed', {
+            err: err instanceof Error ? err.message : String(err),
+            n: i + 1,
+          }));
         }
         return;
       }
@@ -186,7 +193,7 @@ export default function Review() {
       cancelled = true;
       if (timer !== null) clearTimeout(timer);
     };
-  }, [parsed]);
+  }, [parsed, t]);
 
   // 自动回放
   useEffect(() => {
@@ -272,6 +279,8 @@ export default function Review() {
     return stats;
   }, [analyses]);
 
+  const qualityLabel = (q: MoveQuality) => t(`review.quality.${q}` as Path<TranslationSchema>);
+
   return (
     <div className="px-4 md:px-10 py-8 max-w-[1500px] mx-auto">
       {/* 标题 */}
@@ -281,10 +290,10 @@ export default function Review() {
           <span className="text-[10px] uppercase tracking-[0.4em] text-gold/70">Game Review</span>
         </div>
         <h1 className="font-display text-5xl text-ivory tracking-tight-display animate-fade-up">
-          棋局<span className="text-gold italic">复盘</span>
+          {t('review.title')}
         </h1>
         <p className="text-sm text-ivoryDim mt-2 animate-fade-up" style={{ animationDelay: '0.15s' }}>
-          粘贴 PGN 或 FEN · 逐步回放 · 评估曲线 · 走法质量分析
+          {t('review.subtitle')}
         </p>
       </header>
 
@@ -292,30 +301,30 @@ export default function Review() {
       <div className="card-gold rounded-sm p-5 mb-6">
         <div className="flex items-center gap-2 mb-3">
           <FileText size={14} className="text-gold" />
-          <span className="text-xs uppercase tracking-[0.25em] text-gold/80">棋谱输入</span>
+          <span className="text-xs uppercase tracking-[0.25em] text-gold/80">{t('review.inputTitle')}</span>
           <span className="text-[10px] text-ivoryDim ml-2">
-            支持 PGN（含走子序列）或 FEN（单局面）
+            {t('review.inputHint')}
           </span>
           <div className="ml-auto flex items-center gap-2">
             <button onClick={handleLoadSample} className="text-[10px] uppercase tracking-widest text-ivoryDim hover:text-gold flex items-center gap-1 transition-colors">
-              <Sparkles size={10} /> 载入示例
+              <Sparkles size={10} /> {t('review.loadSample')}
             </button>
             <button onClick={handleClear} className="text-[10px] uppercase tracking-widest text-ivoryDim hover:text-wine flex items-center gap-1 transition-colors">
-              <Trash2 size={10} /> 清空
+              <Trash2 size={10} /> {t('review.clear')}
             </button>
           </div>
         </div>
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={`粘贴 PGN 棋谱或 FEN 字符串…\n\n示例 FEN：r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3\n示例 PGN：1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 ...`}
+          placeholder={t('review.placeholder')}
           rows={5}
-          aria-label="棋谱输入"
+          aria-label={t('review.inputTitle')}
           className="w-full px-3 py-2 bg-ink-800/60 border border-gold/15 rounded-sm text-sm text-ivory placeholder:text-ivoryDim/40 font-mono focus:outline-none focus:border-gold/50 transition-colors resize-y"
         />
         <div className="mt-3 flex items-center gap-3">
           <button onClick={handleParse} className="btn-gold-solid px-5 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center gap-1.5">
-            <Upload size={12} /> 解析并复盘
+            <Upload size={12} /> {t('review.parse')}
           </button>
           {parseError && (
             <span className="text-xs text-wine flex items-center gap-1">
@@ -324,12 +333,12 @@ export default function Review() {
           )}
           {parsed && (
             <span className="text-xs text-moss flex items-center gap-1">
-              已解析 {parsed.moves.length} 手
+              {t('review.parsedCount', { n: parsed.moves.length })}
               {parsed.headers?.White && ` · ${parsed.headers.White} vs ${parsed.headers.Black || '?'}`}
             </span>
           )}
           {singleFen && (
-            <span className="text-xs text-moss flex items-center gap-1">FEN 已加载</span>
+            <span className="text-xs text-moss flex items-center gap-1">{t('review.fenLoaded')}</span>
           )}
         </div>
       </div>
@@ -344,25 +353,25 @@ export default function Review() {
             {/* 回放控制 */}
             <div className="card-gold rounded-sm p-4">
               <div className="flex items-center gap-2">
-                <button onClick={handleStart} disabled={currentIdx === 0} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title="跳到开始" aria-label="跳到开始">
+                <button onClick={handleStart} disabled={currentIdx === 0} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title={t('review.controls.start')} aria-label={t('review.controls.start')}>
                   <SkipBack size={12} />
                 </button>
-                <button onClick={handleStepPrev} disabled={currentIdx === 0} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title="上一步" aria-label="上一步">
+                <button onClick={handleStepPrev} disabled={currentIdx === 0} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title={t('review.controls.prev')} aria-label={t('review.controls.prev')}>
                   <ChevronLeft size={12} />
                 </button>
                 <button
                   onClick={handleTogglePlay}
                   disabled={!parsed}
                   className="btn-gold-solid px-4 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                  aria-label={isPlaying ? '暂停回放' : '播放回放'}
+                  aria-label={isPlaying ? t('review.controls.pause') : t('review.controls.play')}
                 >
                   {isPlaying ? <Pause size={12} /> : <Play size={12} />}
-                  {isPlaying ? '暂停' : '播放'}
+                  {isPlaying ? t('review.controls.pause') : t('review.controls.play')}
                 </button>
-                <button onClick={handleStepNext} disabled={currentIdx >= totalSteps - 1} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title="下一步" aria-label="下一步">
+                <button onClick={handleStepNext} disabled={currentIdx >= totalSteps - 1} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title={t('review.controls.next')} aria-label={t('review.controls.next')}>
                   <ChevronRight size={12} />
                 </button>
-                <button onClick={handleEnd} disabled={currentIdx >= totalSteps - 1} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title="跳到结尾" aria-label="跳到结尾">
+                <button onClick={handleEnd} disabled={currentIdx >= totalSteps - 1} className="btn-gold-outline px-3 py-2 rounded-sm text-xs flex items-center disabled:opacity-40 disabled:cursor-not-allowed" title={t('review.controls.end')} aria-label={t('review.controls.end')}>
                   <SkipForward size={12} />
                 </button>
                 <div className="ml-auto flex items-center gap-3 text-xs text-ivoryDim">
@@ -373,7 +382,7 @@ export default function Review() {
                   <div
                     className="w-32 h-1 bg-ink-800 rounded-full overflow-hidden"
                     role="progressbar"
-                    aria-label="回放进度"
+                    aria-label={t('review.controls.progress')}
                     aria-valuemin={0}
                     aria-valuemax={Math.max(totalSteps - 1, 0)}
                     aria-valuenow={currentIdx}
@@ -391,15 +400,15 @@ export default function Review() {
             <div className="card-gold rounded-sm p-4">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp size={14} className="text-gold" />
-                <h3 className="text-xs uppercase tracking-[0.25em] text-gold/80">评估曲线</h3>
+                <h3 className="text-xs uppercase tracking-[0.25em] text-gold/80">{t('review.evalCurve')}</h3>
                 {analyzing && (
                   <span className="ml-auto text-[10px] text-ivoryDim font-mono">
-                    分析中… {analyzeProgress}%
+                    {t('review.analyzing', { n: analyzeProgress })}
                   </span>
                 )}
                 {!analyzing && analyses.length > 0 && (
                   <span className="ml-auto text-[10px] text-ivoryDim font-mono">
-                    当前 {evalToText(currentAnalysis?.evalAfter ?? analyses[0]?.evalBefore ?? 0)}
+                    {t('review.currentEval', { eval: evalToText(currentAnalysis?.evalAfter ?? analyses[0]?.evalBefore ?? 0) })}
                   </span>
                 )}
               </div>
@@ -409,8 +418,8 @@ export default function Review() {
                 height={140}
               />
               <div className="flex items-center justify-between mt-2 text-[9px] uppercase tracking-widest text-ivoryDim/60">
-                <span>黑方优势</span>
-                <span>白方优势</span>
+                <span>{t('review.blackAdv')}</span>
+                <span>{t('review.whiteAdv')}</span>
               </div>
             </div>
 
@@ -422,15 +431,19 @@ export default function Review() {
               }`}>
                 <div className="flex items-center gap-3">
                   <div className={`px-2 py-1 rounded-sm border text-xs font-mono ${QUALITY_STYLE[currentAnalysis.quality].bg} ${QUALITY_STYLE[currentAnalysis.quality].color}`}>
-                    {QUALITY_STYLE[currentAnalysis.quality].symbol} {QUALITY_STYLE[currentAnalysis.quality].label}
+                    {QUALITY_STYLE[currentAnalysis.quality].symbol} {qualityLabel(currentAnalysis.quality)}
                   </div>
                   <div>
                     <div className="text-sm text-ivory">
-                      第 {currentAnalysis.moveNo} 手 · {currentAnalysis.mover === 'w' ? '白' : '黑'}方走 {currentAnalysis.san}
+                      {t('review.moveNo', {
+                        n: currentAnalysis.moveNo,
+                        side: t(currentAnalysis.mover === 'w' ? 'review.white' : 'review.black'),
+                        san: currentAnalysis.san,
+                      })}
                     </div>
                     <div className="text-[10px] text-ivoryDim font-mono mt-0.5">
-                      评估 {evalToText(currentAnalysis.evalBefore)} → {evalToText(currentAnalysis.evalAfter)}
-                      （{currentAnalysis.delta >= 0 ? '+' : ''}{(currentAnalysis.delta / 100).toFixed(2)}）
+                      {t('review.evalLabel')} {evalToText(currentAnalysis.evalBefore)} → {evalToText(currentAnalysis.evalAfter)}
+                      {' '}{t('review.evalChange', { delta: currentAnalysis.delta >= 0 ? '+' + (currentAnalysis.delta / 100).toFixed(2) : (currentAnalysis.delta / 100).toFixed(2) })}
                     </div>
                   </div>
                 </div>
@@ -443,35 +456,35 @@ export default function Review() {
             {/* 对局头信息 */}
             {parsed?.headers && Object.keys(parsed.headers).length > 0 && (
               <div className="card-gold rounded-sm p-4">
-                <div className="text-[10px] uppercase tracking-[0.25em] text-gold/60 mb-3">对局信息</div>
+                <div className="text-[10px] uppercase tracking-[0.25em] text-gold/60 mb-3">{t('review.gameInfo')}</div>
                 <div className="space-y-2">
                   {parsed.headers.White && (
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-ivoryDim uppercase tracking-widest text-[10px]">白方</span>
+                      <span className="text-ivoryDim uppercase tracking-widest text-[10px]">{t('review.white')}</span>
                       <span className="text-ivory font-medium">{parsed.headers.White}</span>
                     </div>
                   )}
                   {parsed.headers.Black && (
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-ivoryDim uppercase tracking-widest text-[10px]">黑方</span>
+                      <span className="text-ivoryDim uppercase tracking-widest text-[10px]">{t('review.black')}</span>
                       <span className="text-ivory font-medium">{parsed.headers.Black}</span>
                     </div>
                   )}
                   {parsed.headers.Event && (
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-ivoryDim uppercase tracking-widest text-[10px]">赛事</span>
+                      <span className="text-ivoryDim uppercase tracking-widest text-[10px]">{t('review.event')}</span>
                       <span className="text-ivory">{parsed.headers.Event}</span>
                     </div>
                   )}
                   {parsed.headers.Date && (
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-ivoryDim uppercase tracking-widest text-[10px]">日期</span>
+                      <span className="text-ivoryDim uppercase tracking-widest text-[10px]">{t('review.date')}</span>
                       <span className="text-ivory font-mono">{parsed.headers.Date}</span>
                     </div>
                   )}
                   {parsed.headers.Result && (
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-ivoryDim uppercase tracking-widest text-[10px]">结果</span>
+                      <span className="text-ivoryDim uppercase tracking-widest text-[10px]">{t('review.result')}</span>
                       <span className="text-gold font-mono">{parsed.headers.Result}</span>
                     </div>
                   )}
@@ -482,12 +495,12 @@ export default function Review() {
             {/* 质量统计 */}
             {analyses.length > 0 && (
               <div className="card-gold rounded-sm p-4">
-                <div className="text-[10px] uppercase tracking-[0.25em] text-gold/60 mb-3">走法质量分布</div>
+                <div className="text-[10px] uppercase tracking-[0.25em] text-gold/60 mb-3">{t('review.qualityTitle')}</div>
                 <div className="grid grid-cols-5 gap-2">
                   {(Object.keys(QUALITY_STYLE) as MoveQuality[]).map((q) => (
                     <div key={q} className={`text-center rounded-sm border py-2 ${QUALITY_STYLE[q].bg}`}>
                       <div className={`font-mono text-sm ${QUALITY_STYLE[q].color}`}>{QUALITY_STYLE[q].symbol}</div>
-                      <div className={`text-[9px] uppercase tracking-wider ${QUALITY_STYLE[q].color}`}>{QUALITY_STYLE[q].label}</div>
+                      <div className={`text-[9px] uppercase tracking-wider ${QUALITY_STYLE[q].color}`}>{qualityLabel(q)}</div>
                       <div className="font-mono text-xs text-ivory mt-0.5">{qualityStats[q]}</div>
                     </div>
                   ))}
@@ -500,8 +513,8 @@ export default function Review() {
               <div className="card-gold rounded-sm">
                 <div className="flex items-center gap-2 px-4 py-3 border-b border-gold/10">
                   <Reply size={14} className="text-gold" />
-                  <h3 className="text-xs uppercase tracking-[0.25em] text-gold/80">走法记录</h3>
-                  <span className="ml-auto font-mono text-[10px] text-ivoryDim">{parsed.moves.length} 手</span>
+                  <h3 className="text-xs uppercase tracking-[0.25em] text-gold/80">{t('review.moveList')}</h3>
+                  <span className="ml-auto font-mono text-[10px] text-ivoryDim">{t('review.moveCount', { n: parsed.moves.length })}</span>
                 </div>
                 <div className="max-h-96 overflow-y-auto">
                   <table className="w-full text-sm font-mono">
@@ -524,7 +537,7 @@ export default function Review() {
                               onKeyDown={(e) => handleMoveCellKey(e, () => { setIsPlaying(false); setCurrentIdx(wIdx + 1); })}
                               role="button"
                               tabIndex={0}
-                              aria-label={`第 ${rowIdx + 1} 手白方走 ${wMove}`}
+                              aria-label={t('review.ariaMoveWhite', { n: rowIdx + 1, move: wMove })}
                               aria-current={currentIdx - 1 === wIdx ? 'true' : undefined}
                             >
                               <span className="flex items-center gap-1.5">
@@ -544,7 +557,7 @@ export default function Review() {
                               onKeyDown={(e) => { if (bMove) handleMoveCellKey(e, () => { setIsPlaying(false); setCurrentIdx(bIdx + 1); }); }}
                               role={bMove ? 'button' : undefined}
                               tabIndex={bMove ? 0 : undefined}
-                              aria-label={bMove ? `第 ${rowIdx + 1} 手黑方走 ${bMove}` : undefined}
+                              aria-label={bMove ? t('review.ariaMoveBlack', { n: rowIdx + 1, move: bMove }) : undefined}
                               aria-current={currentIdx - 1 === bIdx ? 'true' : undefined}
                             >
                               {bMove && (
@@ -574,9 +587,9 @@ export default function Review() {
       {!parsed && !singleFen && !parseError && (
         <div className="card-gold rounded-sm p-12 text-center">
           <Reply size={32} className="text-gold/30 mx-auto mb-3" />
-          <div className="text-sm text-ivoryDim mb-2">尚无棋谱</div>
+          <div className="text-sm text-ivoryDim mb-2">{t('review.emptyState')}</div>
           <div className="text-xs text-ivoryDim/60">
-            在上方输入框粘贴 PGN 或 FEN，点击「解析并复盘」开始
+            {t('review.emptyHint')}
           </div>
         </div>
       )}

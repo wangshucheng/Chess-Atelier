@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
+import { useI18n } from '@/i18n';
 
 export interface ConfirmOptions {
   title: string;
@@ -37,6 +38,7 @@ interface PendingState {
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<PendingState | null>(null);
+  const { t } = useI18n();
   const cancelBtnRef = useRef<HTMLButtonElement | null>(null);
   const confirmBtnRef = useRef<HTMLButtonElement | null>(null);
 
@@ -105,7 +107,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             <button
               onClick={() => resolve(false)}
               className="absolute top-3 right-3 text-ivoryDim hover:text-ivory transition-colors"
-              aria-label="关闭"
+              aria-label={t('common.close')}
             >
               <X size={16} />
             </button>
@@ -132,7 +134,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 onClick={() => resolve(false)}
                 className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest"
               >
-                {pending.opts.cancelText ?? '取消'}
+                {pending.opts.cancelText ?? t('common.cancel')}
               </button>
               <button
                 ref={confirmBtnRef}
@@ -143,7 +145,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                     : 'btn-gold-solid'
                 }`}
               >
-                {pending.opts.confirmText ?? '确认'}
+                {pending.opts.confirmText ?? t('common.confirm')}
               </button>
             </div>
           </div>

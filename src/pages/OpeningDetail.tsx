@@ -7,12 +7,15 @@ import { loadOpenings } from '@/data';
 import { useAppStore } from '@/store/useAppStore';
 import { play } from '@/lib/sounds';
 import type { Opening } from '@/types';
+import { useI18n } from '@/i18n';
+import type { Path, TranslationSchema } from '@/i18n';
 import {
   BookOpen, ArrowLeft, ChevronLeft, ChevronRight, RotateCcw,
   GitBranch, Check, Target, Sparkles, Award, AlertTriangle,
 } from 'lucide-react';
 
 export default function OpeningDetail() {
+  const { t, locale } = useI18n();
   const { eco } = useParams<{ eco: string }>();
   const navigate = useNavigate();
   const [opening, setOpening] = useState<Opening | null>(null);
@@ -47,11 +50,13 @@ export default function OpeningDetail() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setLoadError(err instanceof Error ? err.message : '开局数据加载失败');
+        setLoadError(err instanceof Error ? err.message : t('openingDetail.loadError', { err: '' }));
         setLoading(false);
       });
-    return () => { cancelled = true; };
-  }, [eco]);
+    return () => {
+      cancelled = true;
+    };
+  }, [eco, t]);
 
   // 重置到指定步数
   const resetToStep = useCallback((step: number, includeVariation: boolean) => {
@@ -186,7 +191,7 @@ export default function OpeningDetail() {
     return (
       <div className="px-4 md:px-10 py-16 max-w-[1200px] mx-auto">
         <div className="card-gold rounded-sm p-12 text-center animate-pulse">
-          <div className="text-sm text-ivoryDim">加载开局数据…</div>
+          <div className="text-sm text-ivoryDim">{t('openingDetail.loading')}</div>
         </div>
       </div>
     );
@@ -197,9 +202,9 @@ export default function OpeningDetail() {
       <div className="px-4 md:px-10 py-16 max-w-[1200px] mx-auto">
         <div className="card-gold rounded-sm p-12 text-center">
           <AlertTriangle size={32} className="text-wine mx-auto mb-3" />
-          <div className="text-sm text-ivoryDim mb-4">开局数据加载失败：{loadError}</div>
+          <div className="text-sm text-ivoryDim mb-4">{t('openingDetail.loadError', { err: loadError })}</div>
           <Link to="/openings" className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest inline-flex items-center gap-1.5">
-            <ArrowLeft size={12} /> 返回开局库
+            <ArrowLeft size={12} /> {t('openingDetail.backToLibrary')}
           </Link>
         </div>
       </div>
@@ -211,9 +216,9 @@ export default function OpeningDetail() {
       <div className="px-4 md:px-10 py-16 max-w-[1200px] mx-auto">
         <div className="card-gold rounded-sm p-12 text-center">
           <BookOpen size={32} className="text-gold/40 mx-auto mb-3" />
-          <div className="text-sm text-ivoryDim mb-4">未找到 ECO: {eco} 的开局</div>
+          <div className="text-sm text-ivoryDim mb-4">{t('openingDetail.notFound', { eco: eco ?? '' })}</div>
           <Link to="/openings" className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest inline-flex items-center gap-1.5">
-            <ArrowLeft size={12} /> 返回开局库
+            <ArrowLeft size={12} /> {t('openingDetail.backToLibrary')}
           </Link>
         </div>
       </div>
@@ -223,6 +228,8 @@ export default function OpeningDetail() {
   const currentStep = moves.length;
   const isCompleted = currentStep >= totalSteps && totalSteps > 0;
   const activeVariation = activeVariationIdx !== null ? opening.variations[activeVariationIdx] : null;
+  const namePrimary = locale === 'zh-CN' ? opening.nameZh : opening.name;
+  const nameSecondary = locale === 'zh-CN' ? opening.name : opening.nameZh;
 
   return (
     <div className="px-4 md:px-10 py-8 max-w-[1400px] mx-auto">
@@ -232,7 +239,7 @@ export default function OpeningDetail() {
           onClick={() => navigate('/openings')}
           className="text-xs text-ivoryDim hover:text-gold flex items-center gap-1.5 mb-4 transition-colors"
         >
-          <ArrowLeft size={12} /> 返回开局库
+          <ArrowLeft size={12} /> {t('openingDetail.back')}
         </button>
         <div className="flex items-end justify-between">
           <div>
@@ -240,17 +247,17 @@ export default function OpeningDetail() {
               <span className="font-mono text-xs text-gold/70">{opening.eco}</span>
               <span className="text-gold/30">·</span>
               <span className="text-[10px] uppercase tracking-[0.3em] text-gold/60">
-                {opening.category === 'open' ? 'Open' : opening.category === 'semi-open' ? 'Semi-Open' : 'Closed'}
+                {t(`openings.category.${opening.category}` as Path<TranslationSchema>)}
               </span>
             </div>
             <h1 className="font-display text-5xl text-ivory tracking-tight-display">
-              {opening.nameZh}
+              {namePrimary}
             </h1>
-            <div className="text-sm text-ivoryDim mt-1 italic">{opening.name}</div>
+            <div className="text-sm text-ivoryDim mt-1 italic">{nameSecondary}</div>
           </div>
           {isCompleted && (
             <div className="flex items-center gap-2 text-moss text-xs uppercase tracking-widest">
-              <Award size={14} /> 演练完成
+              <Award size={14} /> {t('openingDetail.completed')}
             </div>
           )}
         </div>
@@ -271,10 +278,14 @@ export default function OpeningDetail() {
           <div className="mt-4 card-gold rounded-sm p-4">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-[10px] uppercase tracking-[0.25em] text-gold/70">
-                {exploreMode ? '自由探索模式' : activeVariation ? `变体：${activeVariation.name}` : '主线演练'}
+                {exploreMode
+                  ? t('openingDetail.freeMode')
+                  : activeVariation
+                    ? t('openingDetail.variation', { name: activeVariation.name })
+                    : t('openingDetail.mainLine')}
               </span>
               <span className="ml-auto font-mono text-xs text-ivoryDim">
-                {currentStep} / {totalSteps}
+                {t('openingDetail.step', { current: currentStep, total: totalSteps })}
               </span>
             </div>
 
@@ -282,7 +293,7 @@ export default function OpeningDetail() {
             <div
               className="h-1 bg-ink-800 rounded-full overflow-hidden mb-4"
               role="progressbar"
-              aria-label="开局演练进度"
+              aria-label={t('openingDetail.progress')}
               aria-valuemin={0}
               aria-valuemax={totalSteps}
               aria-valuenow={currentStep}
@@ -299,20 +310,20 @@ export default function OpeningDetail() {
                 disabled={currentStep === 0 || exploreMode}
                 className="btn-gold-outline px-3 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <ChevronLeft size={12} /> 上一步
+                <ChevronLeft size={12} /> {t('openingDetail.prev')}
               </button>
               <button
                 onClick={handleNext}
                 disabled={currentStep >= totalSteps || exploreMode}
                 className="btn-gold-solid px-3 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                下一步 <ChevronRight size={12} />
+                {t('openingDetail.next')} <ChevronRight size={12} />
               </button>
               <button
                 onClick={handleReset}
                 className="btn-gold-outline px-3 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center gap-1.5"
               >
-                <RotateCcw size={12} /> 重置
+                <RotateCcw size={12} /> {t('openingDetail.reset')}
               </button>
               <button
                 onClick={handleEnterExplore}
@@ -322,14 +333,13 @@ export default function OpeningDetail() {
                     : 'border border-gold/20 text-ivoryDim hover:text-gold hover:border-gold/40'
                 }`}
               >
-                <Sparkles size={12} /> {exploreMode ? '探索中' : '自由探索'}
+                <Sparkles size={12} /> {exploreMode ? t('openingDetail.exploring') : t('openingDetail.freeExplore')}
               </button>
             </div>
 
             {exploreMode && (
               <div className="mt-3 pt-3 border-t border-gold/10 text-xs text-ivoryDim leading-relaxed">
-                自由探索模式已开启：你可在当前局面任意拖拽走子，推演自己的变着。
-                点击「重置」可返回主线演练。
+                {t('openingDetail.freeHint')}
               </div>
             )}
           </div>
@@ -341,12 +351,14 @@ export default function OpeningDetail() {
           <div className="card-gold rounded-sm">
             <div className="flex items-center gap-2 px-4 py-3 border-b border-gold/10">
               <BookOpen size={14} className="text-gold" />
-              <h3 className="text-xs uppercase tracking-[0.25em] text-gold/80">走子序列</h3>
-              <span className="ml-auto font-mono text-[10px] text-ivoryDim">{moves.length} 手</span>
+              <h3 className="text-xs uppercase tracking-[0.25em] text-gold/80">{t('openingDetail.movesTitle')}</h3>
+              <span className="ml-auto font-mono text-[10px] text-ivoryDim">
+                {t('openingDetail.movesCount', { n: moves.length })}
+              </span>
             </div>
             <div className="p-4">
               {moves.length === 0 ? (
-                <div className="text-center text-xs text-ivoryDim/60 italic py-4">尚未走子，点击「下一步」开始</div>
+                <div className="text-center text-xs text-ivoryDim/60 italic py-4">{t('openingDetail.noMoves')}</div>
               ) : (
                 <div className="font-mono text-sm text-ivory leading-loose break-all">
                   {moves.map((m, i) => (
@@ -366,8 +378,10 @@ export default function OpeningDetail() {
           <div className="card-gold rounded-sm">
             <div className="flex items-center gap-2 px-4 py-3 border-b border-gold/10">
               <GitBranch size={14} className="text-gold" />
-              <h3 className="text-xs uppercase tracking-[0.25em] text-gold/80">变体推演</h3>
-              <span className="ml-auto font-mono text-[10px] text-ivoryDim">{opening.variations.length} 种</span>
+              <h3 className="text-xs uppercase tracking-[0.25em] text-gold/80">{t('openingDetail.variationsTitle')}</h3>
+              <span className="ml-auto font-mono text-[10px] text-ivoryDim">
+                {t('openingDetail.variationsCount', { n: opening.variations.length })}
+              </span>
             </div>
             <div className="divide-y divide-gold/5">
               <button
@@ -378,7 +392,7 @@ export default function OpeningDetail() {
               >
                 <div className="flex items-center gap-2 mb-1">
                   <Target size={12} className="text-gold" />
-                  <span className="text-sm text-ivory font-medium">主线</span>
+                  <span className="text-sm text-ivory font-medium">{t('openingDetail.mainLineLabel')}</span>
                   {activeVariationIdx === null && !exploreMode && (
                     <Check size={12} className="ml-auto text-moss" />
                   )}
@@ -403,7 +417,11 @@ export default function OpeningDetail() {
                       <GitBranch size={12} className={isActive ? 'text-gold' : 'text-gold/40'} />
                       <span className="text-sm text-ivory font-medium">{v.name}</span>
                       {isDone && <Check size={12} className="text-moss" />}
-                      {isActive && <span className="ml-auto text-[9px] uppercase tracking-widest text-gold">当前</span>}
+                      {isActive && (
+                        <span className="ml-auto text-[9px] uppercase tracking-widest text-gold">
+                          {t('openingDetail.currentLabel')}
+                        </span>
+                      )}
                     </div>
                     <div className="text-[10px] text-ivoryDim leading-relaxed ml-5 mb-1">{v.note}</div>
                     <div className="text-[10px] text-ivoryDim/70 font-mono ml-5 break-all">
@@ -411,7 +429,7 @@ export default function OpeningDetail() {
                     </div>
                     {isActive && (
                       <div className="mt-2 pt-2 border-t border-gold/10 text-[10px] text-gold/70 font-mono ml-5 break-all">
-                        完整序列：{isFullLine}
+                        {t('openingDetail.fullLine', { line: isFullLine })}
                       </div>
                     )}
                   </button>
@@ -424,11 +442,7 @@ export default function OpeningDetail() {
           <div className="card-gold rounded-sm p-4">
             <div className="flex items-start gap-3">
               <Sparkles size={14} className="text-gold mt-0.5 shrink-0" />
-              <div className="text-xs text-ivoryDim leading-relaxed">
-                <span className="text-gold">演练提示：</span>
-                点击「下一步」逐步走完主线，再选择不同变体查看推演路径。
-                切换至「自由探索」可在当前局面任意试走，建立你的开局直觉。
-              </div>
+              <div className="text-xs text-ivoryDim leading-relaxed">{t('openingDetail.practiceHint')}</div>
             </div>
           </div>
         </div>

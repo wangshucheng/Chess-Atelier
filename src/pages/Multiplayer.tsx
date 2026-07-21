@@ -12,6 +12,8 @@ import { useMultiplayer } from '@/hooks/useMultiplayer';
 import { useConfirm } from '@/components/ConfirmModal';
 import { play } from '@/lib/sounds';
 import type { PlayerColor } from '@/lib/roomStore';
+import { useI18n } from '@/i18n';
+import type { Path, TranslationSchema } from '@/i18n';
 import {
   Swords, Users, LogIn, LogOut, Copy, Check, Flag, Handshake,
   RefreshCw, AlertTriangle, Loader2, Send, ArrowLeft,
@@ -32,6 +34,7 @@ interface ChatLine {
 
 export default function Multiplayer() {
   const confirm = useConfirm();
+  const { t } = useI18n();
   const [nicknameInput, setNicknameInput] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);
@@ -73,7 +76,7 @@ export default function Multiplayer() {
           setGameStatus({ state: 'checkmate', winner });
           play('loss');
         } else if (game.isDraw() || game.isStalemate() || game.isThreefoldRepetition() || game.isInsufficientMaterial()) {
-          setGameStatus({ state: 'draw', reason: '和棋' });
+          setGameStatus({ state: 'draw', reason: 'draw' });
           play('draw');
         }
       } catch (err) {
@@ -96,23 +99,23 @@ export default function Multiplayer() {
     },
     onResign: () => {
       // 对方认输，我方胜（onGameEnd 也会触发，此处仅补聊天提示）
-      setChat((prev) => [...prev, { from: 'system', text: '对手认输', at: Date.now() }]);
+        setChat((prev) => [...prev, { from: 'system', text: t('multiplayer.system.opponentResigned'), at: Date.now() }]);
     },
     onDrawOffer: () => {
       setDrawOfferedBy('opponent');
-      setChat((prev) => [...prev, { from: 'system', text: '对手发起和棋请求', at: Date.now() }]);
+      setChat((prev) => [...prev, { from: 'system', text: t('multiplayer.system.opponentDrawOffer'), at: Date.now() }]);
     },
     onDrawReply: (accept) => {
       if (accept) {
-        setChat((prev) => [...prev, { from: 'system', text: '对手接受和棋', at: Date.now() }]);
+        setChat((prev) => [...prev, { from: 'system', text: t('multiplayer.system.opponentAcceptedDraw'), at: Date.now() }]);
       } else {
-        setChat((prev) => [...prev, { from: 'system', text: '对手拒绝和棋', at: Date.now() }]);
+        setChat((prev) => [...prev, { from: 'system', text: t('multiplayer.system.opponentDeclinedDraw'), at: Date.now() }]);
       }
       setDrawOfferedBy(null);
     },
     onLeave: () => {
       setGameStatus({ state: 'opponent_left' });
-      setChat((prev) => [...prev, { from: 'system', text: '对手已离开', at: Date.now() }]);
+      setChat((prev) => [...prev, { from: 'system', text: t('multiplayer.system.opponentLeft'), at: Date.now() }]);
     },
     onChat: (text, fromOpponent) => {
       if (fromOpponent) {
@@ -156,9 +159,9 @@ export default function Multiplayer() {
         void mp.sendGameEnd({ kind: 'checkmate', winner });
         play('win');
       } else if (game.isDraw() || game.isStalemate() || game.isThreefoldRepetition() || game.isInsufficientMaterial()) {
-        const reason = game.isStalemate() ? '逼和' :
-          game.isThreefoldRepetition() ? '三次重复' :
-          game.isInsufficientMaterial() ? '子力不足' : '和棋';
+        const reason = game.isStalemate() ? 'stalemate' :
+          game.isThreefoldRepetition() ? 'repetition' :
+          game.isInsufficientMaterial() ? 'insufficient' : 'draw';
         setGameStatus({ state: 'draw', reason });
         void mp.sendGameEnd({ kind: 'draw', reason });
         play('draw');
@@ -172,9 +175,9 @@ export default function Multiplayer() {
   // ====== 控制：认输 / 和棋 / 离开 ======
   const handleResign = useCallback(async () => {
     const ok = await confirm({
-      title: '确认认输？',
-      message: '本局将记为负。',
-      confirmText: '认输',
+      title: t('multiplayer.resignConfirm.title'),
+      message: t('multiplayer.resignConfirm.message'),
+      confirmText: t('multiplayer.resignConfirm.confirm'),
       danger: true,
     });
     if (!ok) return;
@@ -188,13 +191,13 @@ export default function Multiplayer() {
     if (drawOfferedBy === 'me') return;
     mp.sendDrawOffer();
     setDrawOfferedBy('me');
-    setChat((prev) => [...prev, { from: 'system', text: '已发起和棋请求', at: Date.now() }]);
-  }, [drawOfferedBy, mp]);
+    setChat((prev) => [...prev, { from: 'system', text: t('multiplayer.system.youOfferedDraw'), at: Date.now() }]);
+  }, [drawOfferedBy, mp, t]);
 
   const handleDrawReply = useCallback((accept: boolean) => {
     mp.sendDrawReply(accept);
     if (accept) {
-      setGameStatus({ state: 'draw', reason: '双方同意和棋' });
+      setGameStatus({ state: 'draw', reason: 'agreed' });
       play('draw');
     }
     setDrawOfferedBy(null);
@@ -202,9 +205,9 @@ export default function Multiplayer() {
 
   const handleLeave = useCallback(async () => {
     const ok = await confirm({
-      title: '离开房间？',
-      message: '将返回大厅，对方将收到离开通知。',
-      confirmText: '离开',
+      title: t('multiplayer.leaveConfirm.title'),
+      message: t('multiplayer.leaveConfirm.message'),
+      confirmText: t('multiplayer.leaveConfirm.confirm'),
       danger: true,
     });
     if (!ok) return;
@@ -245,13 +248,13 @@ export default function Multiplayer() {
       <div className="px-4 md:px-10 py-16 max-w-[800px] mx-auto">
         <div className="card-gold rounded-sm p-12 text-center">
           <AlertTriangle size={32} className="text-wine mx-auto mb-3" />
-          <div className="text-sm text-ivoryDim mb-2">联机对战初始化失败</div>
+          <div className="text-sm text-ivoryDim mb-2">{t('multiplayer.initError')}</div>
           <div className="text-xs text-wine/80 mb-6 font-mono">{errorMessage}</div>
           <button
             onClick={mp.resetError}
             className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest inline-flex items-center gap-1.5"
           >
-            <RefreshCw size={12} /> 重试
+            <RefreshCw size={12} /> {t('common.retry')}
           </button>
         </div>
       </div>
@@ -264,7 +267,7 @@ export default function Multiplayer() {
       <div className="px-4 md:px-10 py-16 max-w-[800px] mx-auto">
         <div className="card-gold rounded-sm p-12 text-center">
           <Loader2 size={32} className="text-gold mx-auto mb-3 animate-spin" />
-          <div className="text-sm text-ivoryDim">正在连接联机对战服务…</div>
+          <div className="text-sm text-ivoryDim">{t('multiplayer.connecting')}</div>
         </div>
       </div>
     );
@@ -293,7 +296,7 @@ export default function Multiplayer() {
         <div className="card-gold rounded-sm p-12 text-center">
           <Loader2 size={32} className="text-gold mx-auto mb-3 animate-spin" />
           <div className="text-sm text-ivoryDim">
-            {connection === 'creating' ? '正在创建房间…' : '正在加入房间…'}
+            {connection === 'creating' ? t('multiplayer.creating') : t('multiplayer.joining')}
           </div>
         </div>
       </div>
@@ -372,6 +375,8 @@ function Lobby({
     setEditingNick(false);
   };
 
+  const { t } = useI18n();
+
   const handleCreate = async () => {
     setBusy('create');
     await onCreate();
@@ -390,29 +395,27 @@ function Lobby({
       <header className="mb-8 animate-fade-up">
         <div className="flex items-center gap-2 mb-2">
           <Users size={12} className="text-gold" />
-          <span className="text-[10px] uppercase tracking-[0.4em] text-gold/70">Multiplayer</span>
+          <span className="text-[10px] uppercase tracking-[0.4em] text-gold/70">{t('multiplayer.badge')}</span>
         </div>
         <h1 className="font-display text-5xl text-ivory tracking-tight-display">
-          联机<span className="text-gold italic">对战</span>
+          {t('multiplayer.title')}
         </h1>
-        <p className="text-sm text-ivoryDim mt-2">
-          通过邀请码与朋友对弈 · 房主执白 · 走子实时同步
-        </p>
+        <p className="text-sm text-ivoryDim mt-2">{t('multiplayer.subtitle')}</p>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* 当前昵称 */}
         <div className="card-gold rounded-sm p-6 md:col-span-2">
-          <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-3">当前昵称</div>
+          <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-3">{t('multiplayer.nickname')}</div>
           {editingNick ? (
             <div className="flex items-center gap-2">
               <input
                 value={nicknameInput}
                 onChange={(e) => setNicknameInput(e.target.value)}
-                placeholder="输入昵称（最多 20 字）"
+                placeholder={t('multiplayer.nicknamePlaceholder')}
                 maxLength={20}
                 autoFocus
-                aria-label="昵称输入"
+                aria-label={t('multiplayer.nickname')}
                 className="flex-1 px-3 py-2 bg-ink-800/60 border border-gold/15 rounded-sm text-sm text-ivory placeholder:text-ivoryDim/50 focus:outline-none focus:border-gold/50 transition-colors"
                 onKeyDown={(e) => e.key === 'Enter' && handleSaveNick()}
               />
@@ -420,13 +423,13 @@ function Lobby({
                 onClick={handleSaveNick}
                 className="btn-gold-solid px-3 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center gap-1.5"
               >
-                <Check size={12} /> 保存
+                <Check size={12} /> {t('common.save')}
               </button>
               <button
                 onClick={() => setEditingNick(false)}
                 className="btn-gold-outline px-3 py-2 rounded-sm text-xs uppercase tracking-widest"
               >
-                取消
+                {t('common.cancel')}
               </button>
             </div>
           ) : (
@@ -436,7 +439,7 @@ function Lobby({
                 onClick={() => { setNicknameInput(nickname); setEditingNick(true); }}
                 className="text-xs text-gold/70 hover:text-gold transition-colors"
               >
-                修改
+                {t('multiplayer.edit')}
               </button>
             </div>
           )}
@@ -448,10 +451,10 @@ function Lobby({
             <div className="w-12 h-12 border border-gold/30 rounded-sm flex items-center justify-center bg-ink-800 mb-4">
               <Swords size={20} className="text-gold" />
             </div>
-            <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-2">Create Room</div>
-            <h3 className="font-display text-2xl text-ivory mb-2 tracking-tight-display">创建房间</h3>
+            <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-2">{t('multiplayer.createRoomBadge')}</div>
+            <h3 className="font-display text-2xl text-ivory mb-2 tracking-tight-display">{t('multiplayer.createRoomTitle')}</h3>
             <p className="text-xs text-ivoryDim leading-relaxed">
-              生成 6 位邀请码发送给朋友，房主执白棋先行。
+              {t('multiplayer.createRoomDesc')}
             </p>
           </div>
           <button
@@ -460,7 +463,7 @@ function Lobby({
             className="btn-gold-solid px-4 py-3 rounded-sm text-xs uppercase tracking-widest flex items-center justify-center gap-2 mt-auto disabled:opacity-50"
           >
             {busy === 'create' ? <Loader2 size={14} className="animate-spin" /> : <Swords size={14} />}
-            创建房间
+            {t('multiplayer.create')}
           </button>
         </div>
 
@@ -470,19 +473,19 @@ function Lobby({
             <div className="w-12 h-12 border border-gold/30 rounded-sm flex items-center justify-center bg-ink-800 mb-4">
               <LogIn size={20} className="text-gold" />
             </div>
-            <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-2">Join Room</div>
-            <h3 className="font-display text-2xl text-ivory mb-2 tracking-tight-display">加入房间</h3>
+            <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-2">{t('multiplayer.joinRoomBadge')}</div>
+            <h3 className="font-display text-2xl text-ivory mb-2 tracking-tight-display">{t('multiplayer.joinRoomTitle')}</h3>
             <p className="text-xs text-ivoryDim leading-relaxed">
-              输入朋友分享的 6 位邀请码，加入者执黑棋后手。
+              {t('multiplayer.joinRoomDesc')}
             </p>
           </div>
           <div className="flex items-center gap-2 mt-auto">
             <input
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 6))}
-              placeholder="ABCDEF"
+              placeholder={t('multiplayer.joinPlaceholder')}
               maxLength={6}
-              aria-label="邀请码输入"
+              aria-label={t('multiplayer.code')}
               className="flex-1 px-3 py-3 bg-ink-800/60 border border-gold/15 rounded-sm text-center text-lg font-mono text-ivory tracking-[0.3em] placeholder:text-ivoryDim/30 placeholder:tracking-widest focus:outline-none focus:border-gold/50 transition-colors"
               onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
             />
@@ -492,7 +495,7 @@ function Lobby({
               className="btn-gold-solid px-4 py-3 rounded-sm text-xs uppercase tracking-widest flex items-center gap-1.5 disabled:opacity-40"
             >
               {busy === 'join' ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
-              加入
+            {t('multiplayer.join')}
             </button>
           </div>
         </div>
@@ -512,6 +515,7 @@ interface WaitingRoomProps {
 }
 
 function WaitingRoom({ roomCode, nickname, copied, onCopy, onCancel }: WaitingRoomProps) {
+  const { t } = useI18n();
   return (
     <div className="px-4 md:px-10 py-16 max-w-[800px] mx-auto">
       <div className="card-gold rounded-sm p-12 text-center">
@@ -519,21 +523,21 @@ function WaitingRoom({ roomCode, nickname, copied, onCopy, onCancel }: WaitingRo
           <Users size={28} className="text-gold" />
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-gold rounded-full animate-ping" />
         </div>
-        <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-2">Waiting for Opponent</div>
-        <h2 className="font-display text-4xl text-ivory mb-3 tracking-tight-display">等待对手加入</h2>
+        <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-2">{t('multiplayer.waitingBadge')}</div>
+        <h2 className="font-display text-4xl text-ivory mb-3 tracking-tight-display">{t('multiplayer.waiting')}</h2>
         <p className="text-sm text-ivoryDim mb-8">
-          {nickname}，将邀请码发送给你的朋友
+          {t('multiplayer.waitingHint', { nickname })}
         </p>
 
         <div className="inline-block bg-ink-800/80 border border-gold/20 rounded-sm p-6 mb-6">
-          <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-2">邀请码</div>
+          <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-2">{t('multiplayer.code')}</div>
           <div className="font-mono text-4xl text-gold tracking-[0.3em] mb-3">{roomCode}</div>
           <button
             onClick={onCopy}
             className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest inline-flex items-center gap-1.5"
           >
             {copied ? <Check size={12} /> : <Copy size={12} />}
-            {copied ? '已复制' : '复制邀请码'}
+            {copied ? t('common.copied') : t('multiplayer.copyCode')}
           </button>
         </div>
 
@@ -542,7 +546,7 @@ function WaitingRoom({ roomCode, nickname, copied, onCopy, onCancel }: WaitingRo
             onClick={onCancel}
             className="text-xs text-ivoryDim/70 hover:text-wine transition-colors inline-flex items-center gap-1.5"
           >
-            <ArrowLeft size={12} /> 取消并返回大厅
+            <ArrowLeft size={12} /> {t('multiplayer.cancelLobby')}
           </button>
         </div>
       </div>
@@ -576,8 +580,9 @@ function GameView({
   chat, chatInput, setChatInput, onSendChat,
   onDrop, onResign, onDrawOffer, onDrawReply, onLeave, onCopyCode, copied,
 }: GameViewProps) {
+  const { t } = useI18n();
   const myColor = mp.state.myColor;
-  const opponentNick = mp.state.opponentNickname ?? '对手';
+  const opponentNick = mp.state.opponentNickname ?? t('multiplayer.defaultOpponent');
   const myNick = mp.state.nickname;
   const roomCode = mp.state.roomCode ?? '';
 
@@ -594,13 +599,15 @@ function GameView({
   const endText = useMemo(() => {
     switch (gameStatus.state) {
       case 'checkmate':
-        return gameStatus.winner === myColor ? '你赢了（将杀）' : '你输了（被将杀）';
+        return gameStatus.winner === myColor ? t('multiplayer.youWinCheckmate') : t('multiplayer.youLoseCheckmate');
       case 'resigned':
-        return gameStatus.winner === myColor ? '你赢了（对手认输）' : '你认输了';
+        return gameStatus.winner === myColor ? t('multiplayer.youWinResign') : t('multiplayer.youResigned');
       case 'draw':
-        return `和棋：${gameStatus.reason}`;
+        return t('multiplayer.draw', {
+          reason: t(`multiplayer.drawReason.${gameStatus.reason}` as Path<TranslationSchema>),
+        });
       case 'opponent_left':
-        return '对手已离开房间';
+        return t('multiplayer.opponentLeft');
       default:
         return '';
     }
@@ -615,25 +622,25 @@ function GameView({
             onClick={onLeave}
             className="text-xs text-ivoryDim hover:text-wine flex items-center gap-1.5 transition-colors"
           >
-            <ArrowLeft size={12} /> 离开房间
+            <ArrowLeft size={12} /> {t('multiplayer.leaveRoom')}
           </button>
           <div className="text-xs text-ivoryDim/60 font-mono">#{roomCode}</div>
           <button
             onClick={onCopyCode}
             className="text-xs text-gold/60 hover:text-gold transition-colors flex items-center gap-1"
-            aria-label="复制邀请码"
+            aria-label={t('multiplayer.copyCode')}
           >
             {copied ? <Check size={10} /> : <Copy size={10} />}
-            {copied ? '已复制' : '复制邀请码'}
+            {copied ? t('common.copied') : t('multiplayer.copyCode')}
           </button>
         </div>
         <div className="text-xs text-ivoryDim">
           {gameEnded ? (
             <span className="text-gold">{endText}</span>
           ) : isMyTurn ? (
-            <span className="text-moss">轮到你走</span>
+            <span className="text-moss">{t('multiplayer.yourTurn')}</span>
           ) : (
-            <span className="text-ivoryDim/70">等待对手…</span>
+            <span className="text-ivoryDim/70">{t('multiplayer.opponentThinking')}</span>
           )}
         </div>
       </div>
@@ -658,7 +665,7 @@ function GameView({
                 onClick={onLeave}
                 className="btn-gold-outline px-4 py-2 rounded-sm text-xs uppercase tracking-widest inline-flex items-center gap-1.5 mt-3"
               >
-                <LogOut size={12} /> 返回大厅
+                <LogOut size={12} /> {t('multiplayer.backToLobby')}
               </button>
             </div>
           )}
@@ -666,19 +673,19 @@ function GameView({
           {/* 和棋请求弹窗（对手发起） */}
           {drawOfferedBy === 'opponent' && !gameEnded && (
             <div className="mt-4 card-gold rounded-sm p-4 border-gold/40 flex items-center justify-between gap-3" role="alert">
-              <div className="text-sm text-ivory">对手发起和棋请求</div>
+              <div className="text-sm text-ivory">{t('multiplayer.drawOfferReceived')}</div>
               <div className="flex gap-2">
                 <button
                   onClick={() => onDrawReply(true)}
                   className="btn-gold-solid px-3 py-1.5 rounded-sm text-xs uppercase tracking-widest"
                 >
-                  接受
+                  {t('multiplayer.accept')}
                 </button>
                 <button
                   onClick={() => onDrawReply(false)}
                   className="btn-gold-outline px-3 py-1.5 rounded-sm text-xs uppercase tracking-widest"
                 >
-                  拒绝
+                  {t('multiplayer.decline')}
                 </button>
               </div>
             </div>
@@ -689,12 +696,12 @@ function GameView({
         <div className="col-span-12 lg:col-span-4 space-y-4">
           {/* 玩家信息 */}
           <div className="card-gold rounded-sm p-4">
-            <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-3">对局信息</div>
+            <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-3">{t('multiplayer.gameInfo')}</div>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-ivoryDim">
                   <span className="inline-block w-3 h-3 rounded-full bg-ivory mr-2 align-middle" />
-                  白方
+                  {t('multiplayer.white')}
                 </span>
                 <span className="text-ivory">
                   {myColor === 'white' ? myNick : opponentNick}
@@ -703,16 +710,16 @@ function GameView({
               <div className="flex items-center justify-between text-sm">
                 <span className="text-ivoryDim">
                   <span className="inline-block w-3 h-3 rounded-full bg-ink-700 border border-gold/30 mr-2 align-middle" />
-                  黑方
+                  {t('multiplayer.black')}
                 </span>
                 <span className="text-ivory">
                   {myColor === 'black' ? myNick : opponentNick}
                 </span>
               </div>
               <div className="pt-2 mt-2 border-t border-gold/10 flex items-center justify-between text-xs">
-                <span className="text-ivoryDim">当前回合</span>
+                <span className="text-ivoryDim">{t('multiplayer.turn')}</span>
                 <span className={isMyTurn ? 'text-moss' : 'text-gold'}>
-                  {myColor === turn ? '你' : '对手'}
+                  {myColor === turn ? t('multiplayer.you') : t('multiplayer.opponent')}
                 </span>
               </div>
             </div>
@@ -721,13 +728,13 @@ function GameView({
           {/* 控制按钮 */}
           {!gameEnded && (
             <div className="card-gold rounded-sm p-4">
-              <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-3">控制</div>
+              <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-3">{t('multiplayer.controls')}</div>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={onResign}
                   className="btn-gold-outline px-3 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center justify-center gap-1.5 hover:border-wine/50 hover:text-wine"
                 >
-                  <Flag size={12} /> 认输
+                  <Flag size={12} /> {t('multiplayer.resign')}
                 </button>
                 <button
                   onClick={onDrawOffer}
@@ -735,12 +742,12 @@ function GameView({
                   className="btn-gold-outline px-3 py-2 rounded-sm text-xs uppercase tracking-widest flex items-center justify-center gap-1.5 disabled:opacity-40"
                 >
                   <Handshake size={12} />
-                  {drawOfferedBy === 'me' ? '已请求' : '求和'}
+                  {drawOfferedBy === 'me' ? t('multiplayer.drawRequested') : t('multiplayer.offerDraw')}
                 </button>
               </div>
               {drawOfferedBy === 'me' && (
                 <div className="text-[10px] text-ivoryDim/60 mt-2 text-center">
-                  等待对手应答…
+                  {t('multiplayer.waitingReply')}
                 </div>
               )}
             </div>
@@ -751,10 +758,10 @@ function GameView({
 
           {/* 聊天 */}
           <div className="card-gold rounded-sm p-4">
-            <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-3">聊天</div>
+            <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-3">{t('multiplayer.chat')}</div>
             <div className="h-32 overflow-y-auto space-y-1.5 mb-2 text-xs">
               {chat.length === 0 ? (
-                <div className="text-ivoryDim/40 italic text-center py-4">暂无消息</div>
+                <div className="text-ivoryDim/40 italic text-center py-4">{t('multiplayer.noMessages')}</div>
               ) : (
                 chat.map((line, i) => (
                   <div
@@ -774,9 +781,9 @@ function GameView({
               <input
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                placeholder="输入消息…"
+                placeholder={t('multiplayer.chatPlaceholder')}
                 maxLength={200}
-                aria-label="聊天输入"
+                aria-label={t('multiplayer.chat')}
                 className="flex-1 px-2 py-1.5 bg-ink-800/60 border border-gold/15 rounded-sm text-xs text-ivory placeholder:text-ivoryDim/40 focus:outline-none focus:border-gold/40 transition-colors"
                 onKeyDown={(e) => e.key === 'Enter' && onSendChat()}
               />
@@ -784,7 +791,7 @@ function GameView({
                 onClick={onSendChat}
                 disabled={!chatInput.trim()}
                 className="btn-gold-outline px-2 py-1.5 rounded-sm text-xs disabled:opacity-40"
-                aria-label="发送消息"
+                aria-label={t('multiplayer.send')}
               >
                 <Send size={12} />
               </button>

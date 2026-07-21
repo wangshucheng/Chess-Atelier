@@ -1,5 +1,6 @@
 // 评估曲线组件：SVG 折线图，白优在上方，黑优在下方
 import { memo } from 'react';
+import { useI18n } from '@/i18n';
 
 // 评估曲线归一化常量
 const EVAL_CURVE_MAX_ABS = 800; // 评估值范围 ±800（超出按边界裁剪）
@@ -18,6 +19,7 @@ interface EvalCurveProps {
 }
 
 function EvalCurveImpl({ data, currentIdx, height = 140 }: EvalCurveProps) {
+  const { t } = useI18n();
   const width = 600;
   const padding = { top: 8, right: 8, bottom: 8, left: 8 };
   const chartW = width - padding.left - padding.right;
@@ -29,7 +31,7 @@ function EvalCurveImpl({ data, currentIdx, height = 140 }: EvalCurveProps) {
         className="flex items-center justify-center text-xs text-ivoryDim/50 italic"
         style={{ height }}
       >
-        评估数据将在解析后生成…
+        {t('evalCurve.empty')}
       </div>
     );
   }

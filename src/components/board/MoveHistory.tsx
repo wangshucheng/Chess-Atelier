@@ -1,6 +1,7 @@
 // 走棋历史侧栏：双列（白/黑）走子表
 import { useMemo, memo, type KeyboardEvent } from 'react';
 import { History } from 'lucide-react';
+import { useI18n } from '@/i18n';
 
 interface MoveHistoryProps {
   moves: string[]; // SAN 序列
@@ -31,6 +32,7 @@ function handleCellKey(
 }
 
 function MoveHistory({ moves, currentIndex, onMoveClick, className = '' }: MoveHistoryProps) {
+  const { t } = useI18n();
   // 配对：白黑走子，仅依赖 moves 重新计算
   const rows = useMemo<Row[]>(() => {
     const list: Row[] = [];
@@ -50,12 +52,12 @@ function MoveHistory({ moves, currentIndex, onMoveClick, className = '' }: MoveH
     <div className={`card-gold rounded-sm ${className}`}>
       <div className="flex items-center gap-2 px-4 py-3 border-b border-gold/10">
         <History size={14} className="text-gold" />
-        <h3 className="text-xs uppercase tracking-[0.25em] text-gold/80">走棋记录</h3>
-        <span className="ml-auto font-mono text-[10px] text-ivoryDim">{moves.length} 手</span>
+        <h3 className="text-xs uppercase tracking-[0.25em] text-gold/80">{t('review.moveList')}</h3>
+        <span className="ml-auto font-mono text-[10px] text-ivoryDim">{t('review.moveCount', { n: moves.length })}</span>
       </div>
       <div className="max-h-80 overflow-y-auto">
         {rows.length === 0 ? (
-          <div className="px-4 py-6 text-center text-xs text-ivoryDim/60 italic">尚无走子记录</div>
+          <div className="px-4 py-6 text-center text-xs text-ivoryDim/60 italic">{t('moveHistory.empty')}</div>
         ) : (
           <table className="w-full text-sm font-mono">
             <tbody>
@@ -73,7 +75,7 @@ function MoveHistory({ moves, currentIndex, onMoveClick, className = '' }: MoveH
                       onKeyDown={(e) => handleCellKey(e, r.whiteIdx, onMoveClick)}
                       role={wClickable ? 'button' : undefined}
                       tabIndex={wClickable ? 0 : undefined}
-                      aria-label={r.white ? `第 ${r.no} 手白方走 ${r.white}` : undefined}
+                      aria-label={r.white ? t('review.ariaMoveWhite', { n: r.no, move: r.white }) : undefined}
                       aria-current={currentIndex === r.whiteIdx ? 'true' : undefined}
                     >
                       {r.white || ''}
@@ -86,7 +88,7 @@ function MoveHistory({ moves, currentIndex, onMoveClick, className = '' }: MoveH
                       onKeyDown={(e) => handleCellKey(e, r.blackIdx, onMoveClick)}
                       role={bClickable ? 'button' : undefined}
                       tabIndex={bClickable ? 0 : undefined}
-                      aria-label={r.black ? `第 ${r.no} 手黑方走 ${r.black}` : undefined}
+                      aria-label={r.black ? t('review.ariaMoveBlack', { n: r.no, move: r.black }) : undefined}
                       aria-current={currentIndex === r.blackIdx ? 'true' : undefined}
                     >
                       {r.black || ''}
