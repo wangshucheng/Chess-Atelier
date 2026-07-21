@@ -1,6 +1,6 @@
 // 左侧栏导航
 import { NavLink } from 'react-router-dom';
-import { Home, Swords, BookOpen, Puzzle, Reply, RotateCcw, Target, Volume2, VolumeX } from 'lucide-react';
+import { Home, Swords, BookOpen, Puzzle, Reply, Users, Target, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/store/useAppStore';
 import { useConfirm } from '@/components/ConfirmModal';
@@ -11,6 +11,7 @@ const navItems = [
   { to: '/play', label: '陪练对战', labelEn: 'Play', icon: Swords },
   { to: '/openings', label: '开局训练', labelEn: 'Openings', icon: BookOpen },
   { to: '/puzzles', label: '习题库', labelEn: 'Puzzles', icon: Puzzle },
+  { to: '/multiplayer', label: '联机对战', labelEn: 'Multiplayer', icon: Users },
   { to: '/review', label: '棋局复盘', labelEn: 'Review', icon: Reply },
 ];
 

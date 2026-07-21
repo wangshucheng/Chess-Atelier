@@ -1,0 +1,20 @@
+name = "chess-multiplayer"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# KV namespace 绑定
+# 部署前先用 `wrangler kv namespace create ROOMS` 创建并替换下面的 id
+[[kv_namespaces]]
+binding = "ROOMS_KV"
+id = "139c8df89cc04ac88fd41098964fbc4c"
+preview_id = "139c8df89cc04ac88fd41098964fbc4c"
+
+# 可选：自定义域名
+[vars]
+CORS_ORIGIN = "https://chess-multiplayer.122181582.workers.dev"
+
+# 注意：本 Worker 免费档额度：
+# - 100,000 次/天 请求
+# - 1,000 次/分钟 写入
+# - KV 读取 100,000 次/天
+# 完全满足 MVP 联机对战需求

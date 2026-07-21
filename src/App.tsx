@@ -12,6 +12,7 @@ const OpeningDetail = lazy(() => import('@/pages/OpeningDetail'));
 const Puzzles = lazy(() => import('@/pages/Puzzles'));
 const PuzzleDetail = lazy(() => import('@/pages/PuzzleDetail'));
 const Review = lazy(() => import('@/pages/Review'));
+const Multiplayer = lazy(() => import('@/pages/Multiplayer'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 function RouteFallback() {
@@ -39,6 +40,7 @@ export default function App() {
                 <Route path="/puzzles" element={<Puzzles />} />
                 <Route path="/puzzles/:level" element={<PuzzleDetail />} />
                 <Route path="/review" element={<Review />} />
+                <Route path="/multiplayer" element={<Multiplayer />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
