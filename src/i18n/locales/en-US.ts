@@ -429,6 +429,10 @@ const enUS: TranslationSchema = {
     unlimited: 'Unlimited',
     youWinTimeout: 'You won (opponent timeout)',
     youLoseTimeout: 'You lost on time',
+    availableRooms: 'Available Rooms',
+    refresh: 'Refresh',
+    refreshing: 'Refreshing…',
+    noAvailableRooms: 'No rooms available to join',
   },
   notFound: {
     title: 'Page Not Found',

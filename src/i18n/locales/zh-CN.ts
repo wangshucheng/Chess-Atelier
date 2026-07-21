@@ -426,6 +426,10 @@ const zhCN = {
     unlimited: '不限时',
     youWinTimeout: '你赢了（对手超时）',
     youLoseTimeout: '你输了（超时）',
+    availableRooms: '可加入的房间',
+    refresh: '刷新',
+    refreshing: '刷新中…',
+    noAvailableRooms: '暂无可加入的房间',
   },
   notFound: {
     title: '路径不存在',

@@ -14,7 +14,7 @@
 
 // ====== 协议类型定义 ======
 
-import type { TimeControl } from '@/types';
+import type { RoomSummary, TimeControl } from '@/types';
 
 export type PlayerColor = 'white' | 'black';
 
@@ -212,6 +212,15 @@ export async function fetchGameRoom(roomCode: string): Promise<GameRoomData | nu
     room.blackTimeMs = 0;
   }
   return room;
+}
+
+/** 列出可加入的房间（等待对手中） */
+export async function listRooms(): Promise<RoomSummary[]> {
+  const res = await apiCall<{ rooms: RoomSummary[] }>('GET', '/api/rooms');
+  if (!res.ok || !res.data) {
+    throw new Error(res.error ?? '获取房间列表失败');
+  }
+  return res.data.rooms ?? [];
 }
 
 /** 加入房间 */

@@ -80,6 +80,16 @@ interface GameRoomData {
   blackTimeMs: number;
 }
 
+/** 房间列表摘要（供大厅展示可加入的房间） */
+interface RoomSummary {
+  code: string;
+  host: PlayerColor;
+  guest: PlayerColor | null;
+  status: RoomStatus;
+  timeControl: TimeControl;
+  createdAt: number;
+}
+
 // ====== 常量 ======
 
 const ROOM_TTL_SECONDS = 24 * 60 * 60; // 24 小时自动过期
@@ -169,6 +179,27 @@ function applyClockOnMove(room: GameRoomData, now: number): void {
   if (mover === 'white') room.whiteTimeMs = remaining;
   else room.blackTimeMs = remaining;
   room.lastMoveAt = now;
+}
+
+/** 列出可加入的房间（仅返回等待对手的房间） */
+async function handleListRooms(ctx: RouteContext): Promise<Response> {
+  const list = await ctx.env.ROOMS_KV.list({ prefix: 'room:' });
+  const rooms: RoomSummary[] = [];
+  for (const { name } of list.keys) {
+    const room = await readRoom(ctx.env.ROOMS_KV, name.replace(/^room:/, ''));
+    if (!room) continue;
+    if (room.status !== 'waiting') continue;
+    rooms.push({
+      code: room.roomCode,
+      host: 'white',
+      guest: room.guestId ? 'black' : null,
+      status: room.status,
+      timeControl: normalizeTimeControl(room.timeControl),
+      createdAt: room.createdAt,
+    });
+  }
+  rooms.sort((a, b) => b.createdAt - a.createdAt);
+  return jsonResponse({ ok: true, rooms }, 200, ctx.corsOrigin);
 }
 
 // ====== 路由处理 ======
@@ -454,6 +485,7 @@ async function handleDeleteRoom(ctx: RouteContext): Promise<Response> {
 
 const routes: Record<string, RouteHandler> = {
   'GET /api/health': handleHealth,
+  'GET /api/rooms': handleListRooms,
   'POST /api/rooms': handleCreateRoom,
   'GET /api/rooms/:code': handleGetRoom,
   'POST /api/rooms/:code/join': handleJoinRoom,

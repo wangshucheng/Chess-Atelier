@@ -18,7 +18,7 @@ import {
   formatClock,
   type PlayerColor,
 } from '@/lib/roomStore';
-import type { TimeControl } from '@/types';
+import type { RoomSummary, TimeControl } from '@/types';
 import { useI18n } from '@/i18n';
 import type { Path, TranslationSchema, Translate } from '@/i18n';
 import {
@@ -313,6 +313,7 @@ export default function Multiplayer() {
         setJoinCode={setJoinCode}
         onCreate={mp.createRoom}
         onJoin={mp.joinRoom}
+        listRooms={mp.listRooms}
         timeControl={timeControl}
         onTimeControlChange={setTimeControl}
       />
@@ -393,13 +394,14 @@ interface LobbyProps {
   setJoinCode: (v: string) => void;
   onCreate: (tc: TimeControl) => Promise<string | null>;
   onJoin: (code: string) => Promise<boolean>;
+  listRooms: () => Promise<RoomSummary[]>;
   timeControl: TimeControl;
   onTimeControlChange: (tc: TimeControl) => void;
 }
 
 function Lobby({
   nickname, nicknameInput, setNicknameInput, onSaveNickname,
-  joinCode, setJoinCode, onCreate, onJoin,
+  joinCode, setJoinCode, onCreate, onJoin, listRooms,
   timeControl, onTimeControlChange,
 }: LobbyProps) {
   const [editingNick, setEditingNick] = useState(false);
@@ -411,6 +413,48 @@ function Lobby({
   };
 
   const { t } = useI18n();
+
+  const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [roomsError, setRoomsError] = useState<string | null>(null);
+
+  const loadRooms = useCallback(async () => {
+    setRoomsLoading(true);
+    setRoomsError(null);
+    try {
+      setRooms(await listRooms());
+    } catch (e) {
+      setRoomsError(e instanceof Error ? e.message : '加载失败');
+    } finally {
+      setRoomsLoading(false);
+    }
+  }, [listRooms]);
+
+  // 自动刷新房间列表
+  useEffect(() => {
+    let active = true;
+    const tick = async () => {
+      try {
+        const list = await listRooms();
+        if (active) setRooms(list);
+      } catch {
+        /* 轮询错误忽略 */
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 4000);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+    };
+  }, [listRooms]);
+
+  const handleJoinFromList = async (code: string) => {
+    if (busy !== null) return;
+    setBusy('join');
+    await onJoin(code);
+    setBusy(null);
+  };
 
   const handleCreate = async () => {
     setBusy('create');
@@ -568,6 +612,52 @@ function Lobby({
             {t('multiplayer.join')}
             </button>
           </div>
+        </div>
+
+        {/* 可加入的房间列表 */}
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-display text-xl text-ivory tracking-tight-display">{t('multiplayer.availableRooms')}</h3>
+            <button
+              onClick={loadRooms}
+              disabled={roomsLoading}
+              className="text-xs text-gold/70 hover:text-gold transition-colors inline-flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={roomsLoading ? 'animate-spin' : ''} />
+              {roomsLoading ? t('multiplayer.refreshing') : t('multiplayer.refresh')}
+            </button>
+          </div>
+          {rooms.length === 0 ? (
+            <p className="text-sm text-ivoryDim/70">{roomsError ?? t('multiplayer.noAvailableRooms')}</p>
+          ) : (
+            <ul className="space-y-2">
+              {rooms.map((r) => (
+                <li
+                  key={r.code}
+                  className="card-gold rounded-sm p-4 flex items-center justify-between gap-4 flex-wrap"
+                >
+                  <div className="flex items-center gap-4 min-w-0">
+                    <span className="font-mono text-2xl text-gold tracking-[0.2em]">{r.code}</span>
+                    <span className="text-xs text-ivoryDim flex items-center gap-1.5">
+                      <Clock size={12} />
+                      {t('multiplayer.host')} · {r.host === 'white' ? t('multiplayer.white') : t('multiplayer.black')}
+                    </span>
+                    <span className="text-xs text-ivoryDim flex items-center gap-1.5">
+                      <Clock size={12} />
+                      {timeControlLabel(r.timeControl, t)}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleJoinFromList(r.code)}
+                    disabled={busy !== null}
+                    className="btn-gold-solid px-4 py-2 rounded-sm text-xs uppercase tracking-widest disabled:opacity-40"
+                  >
+                    {t('multiplayer.join')}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     </div>

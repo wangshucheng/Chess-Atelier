@@ -122,3 +122,17 @@ export interface ClockSnapshot {
   /** 上一次走子或对局开始的时间戳（毫秒），用于客户端推算当前剩余时间 */
   lastMoveAt: number;
 }
+
+// ====== 联机对战：房间列表摘要 ======
+
+export type PlayerColor = 'white' | 'black';
+export type RoomStatus = 'waiting' | 'playing' | 'ended';
+
+export interface RoomSummary {
+  code: string;
+  host: PlayerColor;
+  guest: PlayerColor | null;
+  status: RoomStatus;
+  timeControl: TimeControl;
+  createdAt: number;
+}

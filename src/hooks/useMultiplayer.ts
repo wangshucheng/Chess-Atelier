@@ -23,6 +23,7 @@ import {
   sendChatMessage,
   leaveRoom as leaveRoomRemote,
   cleanExpiredRooms,
+  listRooms,
   UNLIMITED_TIME_CONTROL,
   type GameResult,
   type GameRoomData,
@@ -515,6 +516,8 @@ export function useMultiplayer(callbacks: MultiplayerCallbacks = {}) {
 
   return {
     state,
+    // 房间列表
+    listRooms,
     // 生命周期
     init,
     createRoom,
