@@ -2,11 +2,14 @@
 import { create } from 'zustand';
 import type { UserProgress, PuzzleLevel } from '@/types';
 import { loadProgress, saveProgress, resetProgress } from '@/lib/storage';
+import { setSoundEnabled as syncSoundEngine } from '@/lib/sounds';
 
 // 复盘历史保留最近 N 条
 const MAX_REVIEW_HISTORY = 20;
 // 单条 PGN 文本最大长度（防止 localStorage 配额超限）
 const MAX_PGN_LENGTH = 50_000;
+// 音效开关独立持久化 key（不混入 progress，避免重置进度时连带重置）
+const SOUND_KEY = 'chess-atelier-sound-enabled';
 
 // crypto.randomUUID 在非安全上下文（HTTP 非 localhost）下不可用，加 fallback
 function genId(): string {
@@ -16,6 +19,23 @@ function genId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+// 读取音效开关持久化状态：默认开启，仅当显式存过 false 才关闭
+function loadSoundEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(SOUND_KEY);
+    return raw !== 'false';
+  } catch {
+    return true;
+  }
+}
+function saveSoundEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(SOUND_KEY, String(enabled));
+  } catch {
+    // 隐私模式 / 配额满：忽略
+  }
+}
+
 interface AppState {
   // 训练进度
   progress: UserProgress;
@@ -23,9 +43,12 @@ interface AppState {
   mobileNavOpen: boolean;
   // 当前训练时长累计（毫秒，会话内）
   sessionStart: number;
+  // 音效开关（独立持久化，不受 resetAllProgress 影响）
+  soundEnabled: boolean;
 
   // Actions
   setMobileNavOpen: (open: boolean) => void;
+  setSoundEnabled: (enabled: boolean) => void;
   recordGame: (result: 'win' | 'loss' | 'draw') => void;
   recordPuzzleSolved: (puzzleId: string, level: PuzzleLevel) => void;
   recordPuzzleAttempt: (level: PuzzleLevel) => void;
@@ -47,8 +70,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   progress: loadProgress(),
   mobileNavOpen: false,
   sessionStart: Date.now(),
+  // 初始化时同步给音效引擎（避免首启时引擎默认 true 与持久化值不一致）
+  soundEnabled: (() => {
+    const enabled = loadSoundEnabled();
+    syncSoundEngine(enabled);
+    return enabled;
+  })(),
 
   setMobileNavOpen: (open) => set({ mobileNavOpen: open }),
+
+  setSoundEnabled: (enabled) => {
+    syncSoundEngine(enabled);
+    saveSoundEnabled(enabled);
+    set({ soundEnabled: enabled });
+  },
 
   recordGame: (result) => {
     update(set, get, (p) => {

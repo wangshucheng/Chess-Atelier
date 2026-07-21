@@ -9,6 +9,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { moveToSan } from '@/lib/chess';
 import { buildHintHighlights, buildHintArrows } from '@/lib/highlights';
+import { play } from '@/lib/sounds';
 import type { Puzzle, PuzzleLevel } from '@/types';
 import {
   Puzzle as PuzzleIcon, ArrowLeft, ArrowRight, Lightbulb, Eye, RotateCcw,
@@ -105,18 +106,24 @@ export default function PuzzleDetail() {
               setStatus('solved');
               recordPuzzleSolved(currentPuzzle.id, level);
               setFeedback('全部正确，习题完成！');
+              play('complete');
+            } else {
+              // 对手应招走子：播放普通走子音
+              play(m.captured || m.san.includes('x') ? 'capture' : 'move');
             }
           } else {
             // 走子返回 null（非法），习题数据异常
             setStatus('wrong');
             setFeedback(`习题数据异常：solution[${currentStep}]="${currentPuzzle.solution[currentStep]}" 不合法，请跳过此题`);
             recordPuzzleAttempt(level);
+            play('wrong');
           }
         } catch (e) {
           // solution 中对手走子抛出异常，明示错误而非静默卡死
           setStatus('wrong');
           setFeedback(`习题数据异常：${e instanceof Error ? e.message : '未知错误'}（solution[${currentStep}]）`);
           recordPuzzleAttempt(level);
+          play('wrong');
         }
       }, 600);
       return () => clearTimeout(timer);
@@ -151,6 +158,9 @@ export default function PuzzleDetail() {
             setStatus('solved');
             recordPuzzleSolved(currentPuzzle.id, level);
             setFeedback('全部正确，习题完成！');
+            play('complete');
+          } else {
+            play('correct');
           }
           return true;
         }
@@ -162,6 +172,7 @@ export default function PuzzleDetail() {
       setStatus('wrong');
       recordPuzzleAttempt(level);
       setFeedback(`走子 ${san} 不正确，期望 ${expected}`);
+      play('wrong');
       return false;
     }
     return false;

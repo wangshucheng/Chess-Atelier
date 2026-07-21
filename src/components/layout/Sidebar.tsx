@@ -1,9 +1,10 @@
 // 左侧栏导航
 import { NavLink } from 'react-router-dom';
-import { Home, Swords, BookOpen, Puzzle, Reply, RotateCcw } from 'lucide-react';
+import { Home, Swords, BookOpen, Puzzle, Reply, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/store/useAppStore';
 import { useConfirm } from '@/components/ConfirmModal';
+import { play } from '@/lib/sounds';
 
 const navItems = [
   { to: '/', label: '首页', labelEn: 'Atelier', icon: Home },
@@ -18,9 +19,14 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ onNavigate }: SidebarProps = {}) {
-  // 浅比较订阅 progress + resetAllProgress，其他状态变更不会触发重渲染
-  const { progress, resetAllProgress } = useAppStore(
-    useShallow((s) => ({ progress: s.progress, resetAllProgress: s.resetAllProgress })),
+  // 浅比较订阅 progress + resetAllProgress + soundEnabled
+  const { progress, resetAllProgress, soundEnabled, setSoundEnabled } = useAppStore(
+    useShallow((s) => ({
+      progress: s.progress,
+      resetAllProgress: s.resetAllProgress,
+      soundEnabled: s.soundEnabled,
+      setSoundEnabled: s.setSoundEnabled,
+    })),
   );
   const confirm = useConfirm();
   const winRate = progress.playStats.totalGames > 0
@@ -35,6 +41,13 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
       danger: true,
     });
     if (ok) resetAllProgress();
+  };
+
+  // 切换音效：开启时立刻播放一次点击作为反馈
+  const handleToggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    if (next) play('click');
   };
 
   return (
@@ -99,13 +112,28 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
             <div className="text-[9px] text-ivoryDim uppercase tracking-wider">解题</div>
           </div>
         </div>
-        <button
-          onClick={handleReset}
-          className="w-full mt-2 flex items-center justify-center gap-1.5 text-[10px] uppercase tracking-widest text-ivoryDim/60 hover:text-wine transition-colors py-1.5"
-        >
-          <RotateCcw size={10} />
-          重置进度
-        </button>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button
+            onClick={handleToggleSound}
+            aria-pressed={soundEnabled}
+            aria-label={soundEnabled ? '关闭音效' : '开启音效'}
+            className={`flex items-center justify-center gap-1.5 text-[10px] uppercase tracking-widest py-1.5 transition-colors border rounded-sm ${
+              soundEnabled
+                ? 'border-gold/30 text-gold/80 hover:text-gold hover:border-gold/50'
+                : 'border-gold/10 text-ivoryDim/50 hover:text-ivoryDim hover:border-gold/20'
+            }`}
+          >
+            {soundEnabled ? <Volume2 size={10} /> : <VolumeX size={10} />}
+            {soundEnabled ? '音效开' : '音效关'}
+          </button>
+          <button
+            onClick={handleReset}
+            className="flex items-center justify-center gap-1.5 text-[10px] uppercase tracking-widest text-ivoryDim/60 hover:text-wine transition-colors py-1.5 border border-transparent hover:border-wine/20 rounded-sm"
+          >
+            <RotateCcw size={10} />
+            重置进度
+          </button>
+        </div>
       </div>
     </aside>
   );

@@ -5,6 +5,7 @@ import { Chess } from 'chess.js';
 import ChessBoard from '@/components/board/ChessBoard';
 import { loadOpenings } from '@/data';
 import { useAppStore } from '@/store/useAppStore';
+import { play } from '@/lib/sounds';
 import type { Opening } from '@/types';
 import {
   BookOpen, ArrowLeft, ChevronLeft, ChevronRight, RotateCcw,
@@ -117,12 +118,20 @@ export default function OpeningDetail() {
       if (m) {
         setFen(game.fen());
         setMoves((prev) => [...prev, m.san]);
+        // 走子音效
+        if (m.san === 'O-O' || m.san === 'O-O-O') play('castle');
+        else if (m.promotion) play('promote');
+        else if (m.captured || m.san.includes('x')) play('capture');
+        else if (m.san.includes('+')) play('check');
+        else play('move');
         // 标记完成
         if (moves.length + 1 === allMoves.length) {
           const varKey = activeVariationIdx !== null ? `v${activeVariationIdx}` : 'main';
           setCompletedSteps((prev) => new Set(prev).add(`${opening.eco}-${varKey}`));
           // 记录练习
           recordOpeningPractice(opening.eco, 100);
+          // 演练完成音效
+          play('complete');
         }
       }
     } catch (err) {
@@ -148,6 +157,12 @@ export default function OpeningDetail() {
       if (!m) return false;
       setFen(game.fen());
       setMoves((prev) => [...prev, m.san]);
+      // 走子音效
+      if (m.san === 'O-O' || m.san === 'O-O-O') play('castle');
+      else if (m.promotion) play('promote');
+      else if (m.captured || m.san.includes('x')) play('capture');
+      else if (m.san.includes('+')) play('check');
+      else play('move');
       return true;
     } catch {
       return false;

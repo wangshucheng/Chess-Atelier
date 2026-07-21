@@ -9,7 +9,9 @@ import { useAppStore } from '@/store/useAppStore';
 import { useConfirm } from '@/components/ConfirmModal';
 import { evalToText, explainPosition } from '@/engine/explainer';
 import { buildHintHighlights, buildHintArrows } from '@/lib/highlights';
+import { play } from '@/lib/sounds';
 import type { Explanation, SearchCandidate } from '@/types';
+import type { Move } from 'chess.js';
 import {
   Crown, Lightbulb, Undo, RotateCw, Flag, Sparkles,
   Brain, Target, TrendingUp, GitBranch, Cpu, Zap, Shield,
@@ -34,6 +36,38 @@ interface GameStatus {
   state: 'playing' | 'checkmate' | 'draw' | 'resigned';
   winner?: 'w' | 'b';
   reason?: string;
+}
+
+// 根据走子特征播放对应音效（不依赖 React，避免 useCallback 依赖膨胀）
+function playMoveSound(move: Move): void {
+  const san = move.san;
+  // 将杀：san 含 '#'
+  if (san.includes('#')) {
+    // 将杀音效由 checkGameEnd 处的 win/loss 接管，这里不重复播放
+    return;
+  }
+  // 王车易位
+  if (san === 'O-O' || san === 'O-O-O') {
+    play('castle');
+    return;
+  }
+  // 升变
+  if (move.promotion) {
+    play('promote');
+    return;
+  }
+  // 吃子
+  if (move.captured || san.includes('x')) {
+    play('capture');
+    return;
+  }
+  // 将军
+  if (san.includes('+')) {
+    play('check');
+    return;
+  }
+  // 普通走子
+  play('move');
 }
 
 export default function Play() {
@@ -86,6 +120,9 @@ export default function Play() {
       setSelectedCandidateIdx(null);
       setPvPreview([]);
       setPvPreviewFen(null);
+      // 走子音效：根据走子特征选择
+      // 优先级：将杀 > 将军 > 王车易位 > 升变 > 吃子 > 普通走子
+      playMoveSound(move);
       return true;
     } catch (err) {
       // chess.js 对非法走子抛 Error，记录便于调试但不打扰用户
@@ -104,6 +141,8 @@ export default function Play() {
       const winner = turn === 'w' ? 'b' : 'w';
       setStatus({ state: 'checkmate', winner, reason: '将杀' });
       recordGame(winner === 'w' ? 'win' : 'loss');
+      // 玩家白方，winner==='w' 表示玩家胜
+      play(winner === 'w' ? 'win' : 'loss');
       return true;
     }
     if (game.isDraw() || game.isStalemate() || game.isThreefoldRepetition() || game.isInsufficientMaterial()) {
@@ -113,6 +152,7 @@ export default function Play() {
       else if (game.isInsufficientMaterial()) reason = '子力不足';
       setStatus({ state: 'draw', reason });
       recordGame('draw');
+      play('draw');
       return true;
     }
     return false;
@@ -223,6 +263,7 @@ export default function Play() {
     if (!ok) return;
     setStatus({ state: 'resigned', winner: 'b', reason: '玩家认输' });
     recordGame('loss');
+    play('loss');
   }, [recordGame, status.state, confirm]);
 
   // 翻转棋盘
