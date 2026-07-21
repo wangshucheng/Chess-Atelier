@@ -7,7 +7,7 @@ compatibility_date = "2025-01-01"
 [[kv_namespaces]]
 binding = "ROOMS_KV"
 id = "139c8df89cc04ac88fd41098964fbc4c"
-preview_id = "139c8df89cc04ac88fd41098964fbc4c"
+preview_id = "bb4d88cd9de84aac9ec7de3b7e8c8423"
 
 # 可选：自定义域名
 [vars]
