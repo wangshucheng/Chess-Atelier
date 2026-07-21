@@ -11,12 +11,19 @@ import MoveHistory from '@/components/board/MoveHistory';
 import { useMultiplayer } from '@/hooks/useMultiplayer';
 import { useConfirm } from '@/components/ConfirmModal';
 import { play } from '@/lib/sounds';
-import type { PlayerColor } from '@/lib/roomStore';
+import {
+  TIME_CONTROL_PRESETS,
+  DEFAULT_TIME_CONTROL,
+  UNLIMITED_TIME_CONTROL,
+  formatClock,
+  type PlayerColor,
+} from '@/lib/roomStore';
+import type { TimeControl } from '@/types';
 import { useI18n } from '@/i18n';
-import type { Path, TranslationSchema } from '@/i18n';
+import type { Path, TranslationSchema, Translate } from '@/i18n';
 import {
   Swords, Users, LogIn, LogOut, Copy, Check, Flag, Handshake,
-  RefreshCw, AlertTriangle, Loader2, Send, ArrowLeft,
+  RefreshCw, AlertTriangle, Loader2, Send, ArrowLeft, Clock,
 } from 'lucide-react';
 
 type GameStatus =
@@ -24,7 +31,16 @@ type GameStatus =
   | { state: 'checkmate'; winner: PlayerColor }
   | { state: 'resigned'; winner: PlayerColor }
   | { state: 'draw'; reason: string }
-  | { state: 'opponent_left' };
+  | { state: 'opponent_left' }
+  | { state: 'timeout'; winner: PlayerColor };
+
+/** 把计时规则格式化为可读标签（不限时返回 i18n 文本） */
+function timeControlLabel(tc: TimeControl, t: Translate): string {
+  if (tc.type === 'unlimited') return t('multiplayer.unlimited');
+  const min = Math.round(tc.initialMs / 60000);
+  const inc = Math.round(tc.incrementMs / 1000);
+  return `${min} + ${inc}`;
+}
 
 interface ChatLine {
   from: 'me' | 'opponent' | 'system';
@@ -40,6 +56,8 @@ export default function Multiplayer() {
   const [copied, setCopied] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chat, setChat] = useState<ChatLine[]>([]);
+  // 房主创建房间时选定的计时规则（加入者通过房间数据自动获得）
+  const [timeControl, setTimeControl] = useState<TimeControl>(DEFAULT_TIME_CONTROL);
 
   // 棋局状态
   const gameRef = useRef<Chess | null>(null);
@@ -95,6 +113,9 @@ export default function Multiplayer() {
       } else if (result.kind === 'draw') {
         setGameStatus({ state: 'draw', reason: result.reason });
         play('draw');
+      } else if (result.kind === 'timeout') {
+        setGameStatus({ state: 'timeout', winner: result.winner });
+        play(result.winner === mp.state.myColor ? 'win' : 'loss');
       }
     },
     onResign: () => {
@@ -221,6 +242,13 @@ export default function Multiplayer() {
     setChat([]);
   }, [confirm, mp]);
 
+  // ====== 超时判负（本地时钟耗尽时由 GameView 触发） ======
+  const handleTimeout = useCallback((winner: PlayerColor) => {
+    mp.sendGameEnd({ kind: 'timeout', winner });
+    setGameStatus({ state: 'timeout', winner });
+    play(winner === mp.state.myColor ? 'win' : 'loss');
+  }, [mp]);
+
   // ====== 复制邀请码 ======
   const handleCopyCode = useCallback(() => {
     if (!mp.state.roomCode) return;
@@ -285,6 +313,8 @@ export default function Multiplayer() {
         setJoinCode={setJoinCode}
         onCreate={mp.createRoom}
         onJoin={mp.joinRoom}
+        timeControl={timeControl}
+        onTimeControlChange={setTimeControl}
       />
     );
   }
@@ -309,6 +339,7 @@ export default function Multiplayer() {
       <WaitingRoom
         roomCode={mp.state.roomCode ?? ''}
         nickname={mp.state.nickname}
+        timeControl={timeControl}
         copied={copied}
         onCopy={handleCopyCode}
         onCancel={() => mp.leaveRoom(false)}
@@ -334,6 +365,7 @@ export default function Multiplayer() {
       onDrawReply={handleDrawReply}
       onLeave={handleLeave}
       onCopyCode={handleCopyCode}
+      onTimeout={handleTimeout}
       copied={copied}
     />
   );
@@ -359,13 +391,16 @@ interface LobbyProps {
   onSaveNickname: (v: string) => void;
   joinCode: string;
   setJoinCode: (v: string) => void;
-  onCreate: () => Promise<string | null>;
+  onCreate: (tc: TimeControl) => Promise<string | null>;
   onJoin: (code: string) => Promise<boolean>;
+  timeControl: TimeControl;
+  onTimeControlChange: (tc: TimeControl) => void;
 }
 
 function Lobby({
   nickname, nicknameInput, setNicknameInput, onSaveNickname,
   joinCode, setJoinCode, onCreate, onJoin,
+  timeControl, onTimeControlChange,
 }: LobbyProps) {
   const [editingNick, setEditingNick] = useState(false);
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
@@ -379,7 +414,7 @@ function Lobby({
 
   const handleCreate = async () => {
     setBusy('create');
-    await onCreate();
+    await onCreate(timeControl);
     setBusy(null);
   };
 
@@ -457,6 +492,41 @@ function Lobby({
               {t('multiplayer.createRoomDesc')}
             </p>
           </div>
+          {/* 计时规则配置 */}
+          <div className="mb-6">
+            <div className="flex items-center gap-1.5 mb-2 text-[10px] uppercase tracking-[0.3em] text-gold/60">
+              <Clock size={12} /> {t('multiplayer.timeControl')}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {TIME_CONTROL_PRESETS.map((preset) => {
+                const active =
+                  timeControl.type === preset.value.type &&
+                  timeControl.initialMs === preset.value.initialMs &&
+                  timeControl.incrementMs === preset.value.incrementMs;
+                return (
+                  <button
+                    key={preset.label}
+                    onClick={() => onTimeControlChange(preset.value)}
+                    className={`px-3 py-1.5 rounded-sm text-xs tracking-wide border transition-colors ${
+                      active ? 'border-gold bg-gold/15 text-gold' : 'border-gold/15 text-ivoryDim hover:border-gold/40'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => onTimeControlChange(UNLIMITED_TIME_CONTROL)}
+                className={`px-3 py-1.5 rounded-sm text-xs tracking-wide border transition-colors ${
+                  timeControl.type === 'unlimited'
+                    ? 'border-gold bg-gold/15 text-gold'
+                    : 'border-gold/15 text-ivoryDim hover:border-gold/40'
+                }`}
+              >
+                {t('multiplayer.unlimited')}
+              </button>
+            </div>
+          </div>
           <button
             onClick={handleCreate}
             disabled={busy !== null}
@@ -509,12 +579,13 @@ function Lobby({
 interface WaitingRoomProps {
   roomCode: string;
   nickname: string;
+  timeControl: TimeControl;
   copied: boolean;
   onCopy: () => void;
   onCancel: () => void;
 }
 
-function WaitingRoom({ roomCode, nickname, copied, onCopy, onCancel }: WaitingRoomProps) {
+function WaitingRoom({ roomCode, nickname, timeControl, copied, onCopy, onCancel }: WaitingRoomProps) {
   const { t } = useI18n();
   return (
     <div className="px-4 md:px-10 py-16 max-w-[800px] mx-auto">
@@ -528,6 +599,12 @@ function WaitingRoom({ roomCode, nickname, copied, onCopy, onCancel }: WaitingRo
         <p className="text-sm text-ivoryDim mb-8">
           {t('multiplayer.waitingHint', { nickname })}
         </p>
+
+        <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 rounded-sm bg-ink-800/60 border border-gold/15 text-sm text-ivoryDim">
+          <Clock size={14} className="text-gold/70" />
+          <span>{t('multiplayer.timeControl')}:</span>
+          <span className="text-gold font-medium">{timeControlLabel(timeControl, t)}</span>
+        </div>
 
         <div className="inline-block bg-ink-800/80 border border-gold/20 rounded-sm p-6 mb-6">
           <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-2">{t('multiplayer.code')}</div>
@@ -572,13 +649,14 @@ interface GameViewProps {
   onDrawReply: (accept: boolean) => void;
   onLeave: () => void;
   onCopyCode: () => void;
+  onTimeout: (winner: PlayerColor) => void;
   copied: boolean;
 }
 
 function GameView({
   mp, fen, moves, gameStatus, drawOfferedBy,
   chat, chatInput, setChatInput, onSendChat,
-  onDrop, onResign, onDrawOffer, onDrawReply, onLeave, onCopyCode, copied,
+  onDrop, onResign, onDrawOffer, onDrawReply, onLeave, onCopyCode, onTimeout, copied,
 }: GameViewProps) {
   const { t } = useI18n();
   const myColor = mp.state.myColor;
@@ -595,6 +673,37 @@ function GameView({
   const isMyTurn = turn === myColor && gameStatus.state === 'playing';
   const gameEnded = gameStatus.state !== 'playing';
 
+  // ====== 计时时钟：本地推算当前剩余时间 + 超时判负 ======
+  const timeControl = mp.state.timeControl;
+  const clock = mp.state.clock;
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 200);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // 返回某方当前应显示的剩余毫秒（不限时返回 null）
+  const clockMsFor = (color: PlayerColor): number | null => {
+    if (!clock || !timeControl || timeControl.type === 'unlimited') return null;
+    const base = color === 'white' ? clock.whiteTimeMs : clock.blackTimeMs;
+    if (turn !== color || gameStatus.state !== 'playing') return base;
+    return Math.max(0, base - (now - clock.lastMoveAt));
+  };
+
+  // 当前走子方时钟耗尽 → 对手超时获胜
+  const timeoutFiredRef = useRef(false);
+  useEffect(() => {
+    if (!clock || !timeControl || timeControl.type === 'unlimited') return;
+    if (gameStatus.state !== 'playing') return;
+    const base = turn === 'white' ? clock.whiteTimeMs : clock.blackTimeMs;
+    const remaining = Math.max(0, base - (now - clock.lastMoveAt));
+    if (remaining <= 0 && !timeoutFiredRef.current) {
+      timeoutFiredRef.current = true;
+      const winner: PlayerColor = turn === 'white' ? 'black' : 'white';
+      onTimeout(winner);
+    }
+  }, [now, clock, timeControl, turn, gameStatus.state]);
+
   // 终局状态文本
   const endText = useMemo(() => {
     switch (gameStatus.state) {
@@ -608,6 +717,8 @@ function GameView({
         });
       case 'opponent_left':
         return t('multiplayer.opponentLeft');
+      case 'timeout':
+        return gameStatus.winner === myColor ? t('multiplayer.youWinTimeout') : t('multiplayer.youLoseTimeout');
       default:
         return '';
     }
@@ -698,30 +809,52 @@ function GameView({
           <div className="card-gold rounded-sm p-4">
             <div className="text-[10px] uppercase tracking-[0.3em] text-gold/60 mb-3">{t('multiplayer.gameInfo')}</div>
             <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-ivoryDim">
-                  <span className="inline-block w-3 h-3 rounded-full bg-ivory mr-2 align-middle" />
-                  {t('multiplayer.white')}
-                </span>
-                <span className="text-ivory">
-                  {myColor === 'white' ? myNick : opponentNick}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-ivoryDim">
-                  <span className="inline-block w-3 h-3 rounded-full bg-ink-700 border border-gold/30 mr-2 align-middle" />
-                  {t('multiplayer.black')}
-                </span>
-                <span className="text-ivory">
-                  {myColor === 'black' ? myNick : opponentNick}
-                </span>
-              </div>
+              {(['white', 'black'] as PlayerColor[]).map((color) => {
+                const isActive = turn === color && gameStatus.state === 'playing';
+                const name = myColor === color ? myNick : opponentNick;
+                const cm = clockMsFor(color);
+                return (
+                  <div
+                    key={color}
+                    className={`flex items-center justify-between text-sm rounded-sm px-2 py-1.5 ${
+                      isActive ? 'bg-gold/10' : ''
+                    }`}
+                  >
+                    <span className="text-ivoryDim flex items-center">
+                      <span
+                        className={`inline-block w-3 h-3 rounded-full mr-2 align-middle ${
+                          color === 'white' ? 'bg-ivory' : 'bg-ink-700 border border-gold/30'
+                        }`}
+                      />
+                      {color === 'white' ? t('multiplayer.white') : t('multiplayer.black')}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="text-ivory">{name}</span>
+                      <span
+                        className={`font-mono text-sm tabular-nums min-w-[3.5rem] text-right ${
+                          isActive ? 'text-gold' : 'text-ivoryDim'
+                        }`}
+                      >
+                        {cm === null ? '∞' : formatClock(cm)}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
               <div className="pt-2 mt-2 border-t border-gold/10 flex items-center justify-between text-xs">
                 <span className="text-ivoryDim">{t('multiplayer.turn')}</span>
                 <span className={isMyTurn ? 'text-moss' : 'text-gold'}>
                   {myColor === turn ? t('multiplayer.you') : t('multiplayer.opponent')}
                 </span>
               </div>
+              {timeControl && timeControl.type !== 'unlimited' && (
+                <div className="pt-2 mt-2 border-t border-gold/10 flex items-center justify-between text-xs text-ivoryDim/70">
+                  <span className="flex items-center gap-1">
+                    <Clock size={11} /> {t('multiplayer.timeControl')}
+                  </span>
+                  <span>{timeControlLabel(timeControl, t)}</span>
+                </div>
+              )}
             </div>
           </div>
 

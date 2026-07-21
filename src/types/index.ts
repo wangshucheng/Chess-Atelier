@@ -102,3 +102,23 @@ export interface Explanation {
   details: string[];     // 详细解说段落
   riskLevel: 'low' | 'medium' | 'high';
 }
+
+// ====== 联机对战：计时规则 ======
+
+/** 计时模式：不限时 或 Fischer 加时（每步固定增量） */
+export type TimeControlType = 'unlimited' | 'increment';
+
+export interface TimeControl {
+  type: TimeControlType;
+  /** 每方初始时间（毫秒） */
+  initialMs: number;
+  /** 每步加时 / Fischer 增量（毫秒） */
+  incrementMs: number;
+}
+
+export interface ClockSnapshot {
+  whiteTimeMs: number;
+  blackTimeMs: number;
+  /** 上一次走子或对局开始的时间戳（毫秒），用于客户端推算当前剩余时间 */
+  lastMoveAt: number;
+}

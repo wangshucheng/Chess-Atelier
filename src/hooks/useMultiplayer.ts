@@ -8,6 +8,7 @@
 //
 // 不负责：棋盘渲染、走子合法性校验（chess.js 在组件层完成）
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { TimeControl, ClockSnapshot } from '@/types';
 import {
   initRoomStore,
   generateRoomCode,
@@ -22,6 +23,7 @@ import {
   sendChatMessage,
   leaveRoom as leaveRoomRemote,
   cleanExpiredRooms,
+  UNLIMITED_TIME_CONTROL,
   type GameResult,
   type GameRoomData,
   type PlayerColor,
@@ -48,6 +50,10 @@ export interface MultiplayerState {
   myColor: PlayerColor | null;
   opponentNickname: string | null;
   errorMessage: string | null;
+  /** 房间计时规则（房主设定，加入后不可更改） */
+  timeControl: TimeControl | null;
+  /** 双方剩余时间与基准时间戳，用于客户端推算当前时钟 */
+  clock: ClockSnapshot | null;
 }
 
 export interface MultiplayerCallbacks {
@@ -124,6 +130,8 @@ export function useMultiplayer(callbacks: MultiplayerCallbacks = {}) {
     myColor: null,
     opponentNickname: null,
     errorMessage: null,
+    timeControl: null,
+    clock: null,
   });
 
   // 本地缓存最新一次拉取的房间数据，用于 diff
@@ -159,7 +167,7 @@ export function useMultiplayer(callbacks: MultiplayerCallbacks = {}) {
   }, [state.connection]);
 
   // ====== 创建房间 ======
-  const createRoom = useCallback(async () => {
+  const createRoom = useCallback(async (timeControl: TimeControl) => {
     if (state.connection !== 'lobby') return null;
     patch({ connection: 'creating', errorMessage: null });
     try {
@@ -168,6 +176,7 @@ export function useMultiplayer(callbacks: MultiplayerCallbacks = {}) {
         roomCode: code,
         hostId: state.clientId,
         hostNick: state.nickname,
+        timeControl,
       });
       if (!result.ok) {
         patch({
@@ -181,6 +190,7 @@ export function useMultiplayer(callbacks: MultiplayerCallbacks = {}) {
         roomCode: code,
         role: 'host',
         myColor: 'white',
+        timeControl,
       });
       return code;
     } catch (err) {
@@ -303,6 +313,16 @@ export function useMultiplayer(callbacks: MultiplayerCallbacks = {}) {
       }
 
       lastRoomDataRef.current = data;
+
+      // 同步计时规则与时钟快照（供对局页显示与本地推算）
+      patch({
+        timeControl: data.timeControl ?? UNLIMITED_TIME_CONTROL,
+        clock: {
+          whiteTimeMs: data.whiteTimeMs,
+          blackTimeMs: data.blackTimeMs,
+          lastMoveAt: data.lastMoveAt,
+        },
+      });
     } catch (err) {
       // 轮询失败静默，下次重试
       console.warn('[useMultiplayer] 轮询失败:', err);
@@ -349,16 +369,25 @@ export function useMultiplayer(callbacks: MultiplayerCallbacks = {}) {
       });
       // 同步更新本地缓存，避免下次轮询误判为对方走子
       if (lastRoomDataRef.current) {
-        lastRoomDataRef.current = {
-          ...lastRoomDataRef.current,
-          fen, moves, turn,
-          lastMoveAt: Date.now(),
-          lastMoveSan: san,
-          lastMoveFrom: from,
-          lastMoveTo: to,
-          lastMovePromotion: promotion ?? null,
-          drawOfferBy: null,
-        };
+        const snapshot = lastRoomDataRef.current;
+        const now = Date.now();
+        let clockPatch: ClockSnapshot | undefined;
+        let merged = { ...snapshot, fen, moves, turn, lastMoveSan: san, lastMoveFrom: from, lastMoveTo: to, lastMovePromotion: promotion ?? null, drawOfferBy: null };
+        if (snapshot.timeControl && snapshot.timeControl.type !== 'unlimited') {
+          const mover: PlayerColor = state.role === 'host' ? 'white' : 'black';
+          const remainingBefore = mover === 'white' ? snapshot.whiteTimeMs : snapshot.blackTimeMs;
+          let nr = remainingBefore - (now - snapshot.lastMoveAt);
+          if (nr < 0) nr = 0;
+          else nr += snapshot.timeControl.incrementMs;
+          merged.whiteTimeMs = mover === 'white' ? nr : snapshot.whiteTimeMs;
+          merged.blackTimeMs = mover === 'black' ? nr : snapshot.blackTimeMs;
+          merged.lastMoveAt = now;
+          clockPatch = { whiteTimeMs: merged.whiteTimeMs, blackTimeMs: merged.blackTimeMs, lastMoveAt: now };
+        } else {
+          merged.lastMoveAt = now;
+        }
+        lastRoomDataRef.current = merged;
+        if (clockPatch) patch({ clock: clockPatch });
       }
       return true;
     } catch (err) {

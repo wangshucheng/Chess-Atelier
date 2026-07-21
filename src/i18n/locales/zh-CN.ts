@@ -422,6 +422,10 @@ const zhCN = {
     },
     defaultOpponent: '对手',
     host: '房主',
+    timeControl: '计时规则',
+    unlimited: '不限时',
+    youWinTimeout: '你赢了（对手超时）',
+    youLoseTimeout: '你输了（超时）',
   },
   notFound: {
     title: '路径不存在',

@@ -425,6 +425,10 @@ const enUS: TranslationSchema = {
     },
     defaultOpponent: 'Opponent',
     host: 'Host',
+    timeControl: 'Time Control',
+    unlimited: 'Unlimited',
+    youWinTimeout: 'You won (opponent timeout)',
+    youLoseTimeout: 'You lost on time',
   },
   notFound: {
     title: 'Page Not Found',

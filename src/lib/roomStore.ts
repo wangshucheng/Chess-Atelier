@@ -14,6 +14,8 @@
 
 // ====== 协议类型定义 ======
 
+import type { TimeControl } from '@/types';
+
 export type PlayerColor = 'white' | 'black';
 
 /** 房间状态 */
@@ -24,7 +26,8 @@ export type GameResult =
   | { kind: 'checkmate'; winner: PlayerColor }
   | { kind: 'resign'; winner: PlayerColor }
   | { kind: 'draw'; reason: string }
-  | { kind: 'opponent_left' };
+  | { kind: 'opponent_left' }
+  | { kind: 'timeout'; winner: PlayerColor };
 
 /** 聊天条目 */
 export interface ChatLine {
@@ -57,6 +60,44 @@ export interface GameRoomData {
   chat: ChatLine[];
   updatedAt: number;
   createdAt: number;
+  /** 计时规则（房主创建时设定，加入后不可更改） */
+  timeControl: TimeControl;
+  /** 白方剩余时间（毫秒） */
+  whiteTimeMs: number;
+  /** 黑方剩余时间（毫秒） */
+  blackTimeMs: number;
+}
+
+// ====== 计时规则预设 ======
+
+/** 不限时 */
+export const UNLIMITED_TIME_CONTROL: TimeControl = {
+  type: 'unlimited',
+  initialMs: 0,
+  incrementMs: 0,
+};
+
+/** 可选计时预设：标签 + 规则 */
+export const TIME_CONTROL_PRESETS: { label: string; value: TimeControl }[] = [
+  { label: '3 + 2', value: { type: 'increment', initialMs: 3 * 60_000, incrementMs: 2_000 } },
+  { label: '5 + 0', value: { type: 'increment', initialMs: 5 * 60_000, incrementMs: 0 } },
+  { label: '10 + 0', value: { type: 'increment', initialMs: 10 * 60_000, incrementMs: 0 } },
+  { label: '15 + 10', value: { type: 'increment', initialMs: 15 * 60_000, incrementMs: 10_000 } },
+  { label: '30 + 0', value: { type: 'increment', initialMs: 30 * 60_000, incrementMs: 0 } },
+];
+
+/** 默认计时规则（大厅默认选中） */
+export const DEFAULT_TIME_CONTROL: TimeControl = TIME_CONTROL_PRESETS[1].value; // 5 + 0
+
+/** 把毫秒格式化为时钟显示文本（m:ss 或 h:mm:ss，不限时返回 '∞'） */
+export function formatClock(ms: number): string {
+  if (!isFinite(ms) || ms < 0) return '0:00';
+  const totalSeconds = Math.ceil(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
 // ====== Worker URL 配置 ======
@@ -148,11 +189,13 @@ export async function createGameRoom(params: {
   roomCode: string;
   hostId: string;
   hostNick: string;
+  timeControl: TimeControl;
 }): Promise<{ ok: boolean; error?: string }> {
   const res = await apiCall<{ ok: boolean }>('POST', '/api/rooms', {
     roomCode: params.roomCode,
     hostId: params.hostId,
     hostNick: params.hostNick,
+    timeControl: params.timeControl,
   });
   return { ok: res.ok, error: res.error };
 }
@@ -161,7 +204,14 @@ export async function createGameRoom(params: {
 export async function fetchGameRoom(roomCode: string): Promise<GameRoomData | null> {
   const res = await apiCall<GameRoomData>('GET', `/api/rooms/${encodeURIComponent(roomCode)}`);
   if (!res.ok || !res.data) return null;
-  return res.data;
+  const room = res.data;
+  // 兼容旧房间（缺少计时字段时回退为不限时）
+  if (!room.timeControl) {
+    room.timeControl = UNLIMITED_TIME_CONTROL;
+    room.whiteTimeMs = 0;
+    room.blackTimeMs = 0;
+  }
+  return room;
 }
 
 /** 加入房间 */

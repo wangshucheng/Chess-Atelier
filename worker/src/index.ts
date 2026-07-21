@@ -29,11 +29,22 @@ export interface Env {
 type PlayerColor = 'white' | 'black';
 type RoomStatus = 'waiting' | 'playing' | 'ended';
 
+type TimeControlType = 'unlimited' | 'increment';
+
+interface TimeControl {
+  type: TimeControlType;
+  /** 每方初始时间（毫秒） */
+  initialMs: number;
+  /** 每步加时 / Fischer 增量（毫秒） */
+  incrementMs: number;
+}
+
 type GameResult =
   | { kind: 'checkmate'; winner: PlayerColor }
   | { kind: 'resign'; winner: PlayerColor }
   | { kind: 'draw'; reason: string }
-  | { kind: 'opponent_left' };
+  | { kind: 'opponent_left' }
+  | { kind: 'timeout'; winner: PlayerColor };
 
 interface ChatLine {
   from: 'host' | 'guest';
@@ -61,6 +72,12 @@ interface GameRoomData {
   chat: ChatLine[];
   updatedAt: number;
   createdAt: number;
+  /** 计时规则（房主创建时设定，加入后不可更改） */
+  timeControl: TimeControl;
+  /** 白方剩余时间（毫秒） */
+  whiteTimeMs: number;
+  /** 黑方剩余时间（毫秒） */
+  blackTimeMs: number;
 }
 
 // ====== 常量 ======
@@ -118,6 +135,42 @@ async function parseBody<T>(req: Request): Promise<T | null> {
   }
 }
 
+/** 校验并规范化客户端传来的计时规则，非法输入回退为不限时 */
+function normalizeTimeControl(raw: any): TimeControl {
+  if (raw && raw.type === 'increment' && typeof raw.initialMs === 'number') {
+    const initialMs = Math.min(Math.max(Math.round(raw.initialMs), 0), 3 * 60 * 60 * 1000); // 上限 3 小时
+    const incrementMs = Math.min(Math.max(Math.round(raw.incrementMs ?? 0), 0), 60 * 1000); // 上限 60 秒
+    return { type: 'increment', initialMs, incrementMs };
+  }
+  return { type: 'unlimited', initialMs: 0, incrementMs: 0 };
+}
+
+/**
+ * 根据计时规则更新走子后的时钟，并判定是否超时（旗帜落下）。
+ * 直接修改 room 的 whiteTimeMs / blackTimeMs / lastMoveAt / status / result。
+ * mover 为刚刚走子的那一方（即走子前的 room.turn）。
+ */
+function applyClockOnMove(room: GameRoomData, now: number): void {
+  const tc = room.timeControl;
+  if (!tc || tc.type === 'unlimited') return;
+  const mover: PlayerColor = room.turn;
+  const remainingBefore = mover === 'white' ? room.whiteTimeMs : room.blackTimeMs;
+  const elapsed = now - room.lastMoveAt;
+  let remaining = remainingBefore - elapsed;
+  if (remaining < 0) {
+    // 旗帜在走子前已落下 → 走子方判负
+    remaining = 0;
+    room.status = 'ended';
+    room.result = { kind: 'timeout', winner: mover === 'white' ? 'black' : 'white' };
+  } else {
+    // Fischer 增量：走子后加上每步加时
+    remaining += tc.incrementMs;
+  }
+  if (mover === 'white') room.whiteTimeMs = remaining;
+  else room.blackTimeMs = remaining;
+  room.lastMoveAt = now;
+}
+
 // ====== 路由处理 ======
 
 interface RouteContext {
@@ -141,6 +194,7 @@ interface CreateRoomBody {
   roomCode: string;
   hostId: string;
   hostNick: string;
+  timeControl?: TimeControl;
 }
 
 async function handleCreateRoom(ctx: RouteContext): Promise<Response> {
@@ -154,6 +208,7 @@ async function handleCreateRoom(ctx: RouteContext): Promise<Response> {
     return errorResponse('房间已存在，请重新生成邀请码', 409, ctx.corsOrigin);
   }
   const now = Date.now();
+  const timeControl = normalizeTimeControl(body.timeControl);
   const room: GameRoomData = {
     roomCode: body.roomCode.toUpperCase(),
     hostId: body.hostId,
@@ -174,6 +229,9 @@ async function handleCreateRoom(ctx: RouteContext): Promise<Response> {
     chat: [],
     updatedAt: now,
     createdAt: now,
+    timeControl,
+    whiteTimeMs: timeControl.initialMs,
+    blackTimeMs: timeControl.initialMs,
   };
   await writeRoom(ctx.env.ROOMS_KV, room);
   return jsonResponse({ ok: true, data: room }, 201, ctx.corsOrigin);
@@ -236,10 +294,13 @@ async function handleMove(ctx: RouteContext): Promise<Response> {
   }
   const room = await readRoom(ctx.env.ROOMS_KV, code);
   if (!room) return errorResponse('房间不存在', 404, ctx.corsOrigin);
+  const now = Date.now();
+  // 休闲模式不做服务端校验，直接采用客户端状态更新时钟（含超时判定）
+  applyClockOnMove(room, now);
   room.fen = body.fen;
   room.moves = body.moves;
   room.turn = body.turn;
-  room.lastMoveAt = Date.now();
+  room.lastMoveAt = now;
   room.lastMoveSan = body.san;
   room.lastMoveFrom = body.from;
   room.lastMoveTo = body.to;
